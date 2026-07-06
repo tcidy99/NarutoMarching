@@ -526,17 +526,20 @@ class PathfindingDemo:
         # Add three team switch buttons at right side, just above symbol display area
         bax_team1 = self.fig.add_axes([0.899, 0.735, 0.022, 0.025])
         self._btn_team1 = Button(bax_team1, 'T1', color='#38BBED')
-        self._btn_team1.label.set_fontsize(24)
+        self._btn_team1.label.set_fontsize(17)
+        self._btn_team1.label.set_color('#FFFF00')
         self._btn_team1.on_clicked(lambda _evt: self._on_team_button_click(1))
 
         bax_team2 = self.fig.add_axes([0.927, 0.735, 0.022, 0.025])
         self._btn_team2_switch = Button(bax_team2, 'T2', color='#92C73E')
-        self._btn_team2_switch.label.set_fontsize(24)
+        self._btn_team2_switch.label.set_fontsize(17)
+        self._btn_team2_switch.label.set_color('#FFFF00')
         self._btn_team2_switch.on_clicked(lambda _evt: self._on_team_button_click(2))
 
         bax_team3 = self.fig.add_axes([0.955, 0.735, 0.022, 0.025])
         self._btn_team3_switch = Button(bax_team3, 'T3', color='#E74C3C')
-        self._btn_team3_switch.label.set_fontsize(24)
+        self._btn_team3_switch.label.set_fontsize(17)
+        self._btn_team3_switch.label.set_color('#FFFF00')
         self._btn_team3_switch.on_clicked(lambda _evt: self._on_team_button_click(3))
 
         # Team-button double-click detection state (backend-independent).
@@ -556,6 +559,7 @@ class PathfindingDemo:
         self.fig.canvas.mpl_connect('scroll_event', self._on_scroll)
         self.fig.canvas.mpl_connect('motion_notify_event', self._on_motion)
         self.fig.canvas.mpl_connect('key_press_event', self._on_key_press)
+        self.fig.canvas.mpl_connect('close_event', self._on_main_window_closed)
 
         # Initialize team button colors
         self._update_switch_button_color()
@@ -572,6 +576,18 @@ class PathfindingDemo:
     def _on_data_window_closed(self, _event):
         """Track when the data window is closed by the user."""
         self._data_window_open = False
+
+    def _on_main_window_closed(self, _event):
+        """Close dependent stat windows when the main map window closes."""
+        self._data_window_open = False
+        self._global_stat_window_open = False
+
+        try:
+            if (hasattr(self, 'global_stat_fig') and self.global_stat_fig is not None and
+                    plt.fignum_exists(self.global_stat_fig.number)):
+                plt.close(self.global_stat_fig)
+        except Exception:
+            pass
 
     def _on_global_stat_window_closed(self, _event):
         """Track when the global stat window is closed by the user."""
@@ -1840,6 +1856,11 @@ class PathfindingDemo:
 
     def _update_team_button_labels(self):
         """Update team button labels to show remaining steps for each team."""
+        # Keep team button text styling consistent after text refresh.
+        self._btn_team1.label.set_color('#FFFF00')
+        self._btn_team2_switch.label.set_color('#FFFF00')
+        self._btn_team3_switch.label.set_color('#FFFF00')
+
         # Team 1 - always exists
         team1_steps = self._get_team_steps_for_day(self.team1, self.current_day)
         self._btn_team1.label.set_text(f'{team1_steps}')

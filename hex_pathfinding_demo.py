@@ -26,6 +26,27 @@ except Exception:
 # Disable matplotlib's default 'q' quit key to use Q for day navigation
 matplotlib.rcParams['keymap.quit'] = []
 
+# Prefer installed CJK fonts so Chinese text does not render as squares.
+try:
+    from matplotlib import font_manager as _fm
+
+    _cjk_candidates = [
+        'Microsoft YaHei',
+        'SimHei',
+        'Noto Sans CJK SC',
+        'Source Han Sans SC',
+        'PingFang SC',
+        'WenQuanYi Zen Hei',
+        'Arial Unicode MS',
+    ]
+    _installed_font_names = {f.name for f in _fm.fontManager.ttflist}
+    _picked_cjk_fonts = [n for n in _cjk_candidates if n in _installed_font_names]
+    if _picked_cjk_fonts:
+        matplotlib.rcParams['font.sans-serif'] = _picked_cjk_fonts + ['DejaVu Sans']
+    matplotlib.rcParams['axes.unicode_minus'] = False
+except Exception:
+    pass
+
 import matplotlib.pyplot as plt
 from matplotlib.patches import RegularPolygon, Rectangle, Circle
 from matplotlib.transforms import Affine2D
@@ -57,7 +78,7 @@ with open('landInfo.json') as f:
 
 HEX_SIZE = 5
 # Display-only angled-view transform: stretch x wider, compress y
-X_SCALE = 1.5
+X_SCALE = 1
 Y_SCALE = 0.6
 
 # Marching game start: game coords (row=53, col=8) → internal 0-based (ir, ic)
@@ -384,6 +405,7 @@ class PathfindingDemo:
         self._default_xlim = None
         self._default_ylim = None
         self._updating_scrollbar = False  # Flag to prevent feedback loops
+        self._view_anim_timer = None  # Timer for smooth center-view transitions
         
         # Find all G/g lands on the map (for 20% food reduction when all visited)
         self.all_g_lands = set()  # Positions of all G/g lands
@@ -417,6 +439,7 @@ class PathfindingDemo:
         self._edit_seg_button_timer = None
         self._edit_seg_button_flash_state = False
         self._day_edit_context = None
+        self._show_future_paths = True
         
         # Initialize day records for days 1-90 with proper remaining steps
         self._init_day_records()
@@ -432,8 +455,8 @@ class PathfindingDemo:
         self.fig.canvas.manager.set_window_title(
             'Hex Grid – A* Waypoint Path – 3 Teams  |  redblobgames.com/grids/hexagons/')
         
-        # Create main map axes - expanded to maximum size without overlapping buttons
-        self.ax = self.fig.add_axes([0.02, 0.06, 0.89, 0.91])
+        # Create main map axes - enlarged so map uses more of the window area.
+        self.ax = self.fig.add_axes([0.01, 0.05, 0.905, 0.93])
         
         # Create separate data window figure
         self.data_fig = plt.figure(figsize=(8, 10))
@@ -444,26 +467,33 @@ class PathfindingDemo:
 
         # Create global stat window figure (hidden initially)
         self.global_stat_fig = plt.figure(figsize=(8, 10))
-        self.global_stat_fig.canvas.manager.set_window_title('Global Stat')
+        self.global_stat_fig.canvas.manager.set_window_title('全局统计')
         self.global_stat_ax = self.global_stat_fig.add_axes([0.05, 0.05, 0.9, 0.9])
         self.global_stat_fig.canvas.mpl_connect('close_event', self._on_global_stat_window_closed)
         plt.close(self.global_stat_fig)
 
         # Buttons (right side, below symbol display area)
         bax_undo = self.fig.add_axes([0.914, 0.08, 0.043, 0.025])
-        self._btn_undo = Button(bax_undo, 'Undo', color='#aaddff')
+        self._btn_undo = Button(bax_undo, '撤销', color='#aaddff')
         self._btn_undo.label.set_fontsize(12)
         self._btn_undo.on_clicked(lambda _evt: self._undo())
 
         bax_rst = self.fig.add_axes([0.957, 0.08, 0.043, 0.025])
-        self._btn_reset = Button(bax_rst, 'Reset', color='#e09050')
+        self._btn_reset = Button(bax_rst, '重置', color='#e09050')
         self._btn_reset.label.set_fontsize(12)
         self._btn_reset.on_clicked(lambda _evt: self._confirm_reset())
 
         bax_fly = self.fig.add_axes([0.914, 0.032, 0.043, 0.025])
-        self._btn_fly = Button(bax_fly, 'Fly', color='#FFB6C1')
+        self._btn_fly = Button(bax_fly, '飞雷神', color='#FFB6C1')
         self._btn_fly.label.set_fontsize(12)
         self._btn_fly.on_clicked(lambda _evt: self._activate_fly_skill())
+
+        # Toggle visibility of future-day paths.
+        bax_future_paths = self.fig.add_axes([0.914, 0.056, 0.086, 0.022])
+        self._btn_show_future = Button(bax_future_paths, '显示未来', color='#90EE90', hovercolor='#7FDF7F')
+        self._btn_show_future.label.set_fontsize(11)
+        self._btn_show_future.on_clicked(lambda _evt: self._toggle_show_future_paths())
+        self._update_show_future_button_state()
         
         # Add text label to show fly skill limit on the button's axes
         self._fly_skill_label_text = bax_fly.text(0.95, 0.5, str(self.fly_skill_limit),
@@ -474,18 +504,18 @@ class PathfindingDemo:
         # Checkbox to toggle bonus labels (B, X, Z) - same size as other buttons
         bax_chk = self.fig.add_axes([0.957, 0.032, 0.043, 0.025])
         self._chk_state = True
-        self._btn_chk_labels = Button(bax_chk, 'B/X/Z', color='#90EE90', hovercolor='#7FDF7F')
+        self._btn_chk_labels = Button(bax_chk, '显示buff', color='#90EE90', hovercolor='#7FDF7F')
         self._btn_chk_labels.label.set_fontsize(12)
         self._btn_chk_labels.on_clicked(lambda _evt: self._toggle_checkbox_state())
 
         # Prev/Next Day buttons - side by side at bottom left
         bax_prev_day = self.fig.add_axes([0.02, 0.02, 0.09, 0.035])
-        self._btn_prev_day = Button(bax_prev_day, 'Prev Day (Q)', color='#ffe699')
+        self._btn_prev_day = Button(bax_prev_day, '前一天(Q)', color='#ffe699')
         self._btn_prev_day.label.set_fontsize(14)
         self._btn_prev_day.on_clicked(lambda _evt: self._go_previous_day())
 
         bax_next_day = self.fig.add_axes([0.12, 0.02, 0.09, 0.035])
-        self._btn_next_day = Button(bax_next_day, 'Next Day (E)', color='#ffeb99')
+        self._btn_next_day = Button(bax_next_day, '后一天(E)', color='#ffeb99')
         self._btn_next_day.label.set_fontsize(14)
         self._btn_next_day.on_clicked(lambda _evt: self._advance_day())
 
@@ -496,47 +526,47 @@ class PathfindingDemo:
 
         # Load/Save buttons at bottom right - touching edge
         bax_load = self.fig.add_axes([0.914, 0.002, 0.043, 0.025])
-        self._btn_load = Button(bax_load, 'Load', color='#b3d9ff')
+        self._btn_load = Button(bax_load, '读取', color='#b3d9ff')
         self._btn_load.label.set_fontsize(12)
         self._btn_load.on_clicked(lambda _evt: self._load_game())
 
         bax_save = self.fig.add_axes([0.957, 0.002, 0.043, 0.025])
-        self._btn_save = Button(bax_save, 'Save', color='#99ff99')
+        self._btn_save = Button(bax_save, '保存', color='#99ff99')
         self._btn_save.label.set_fontsize(12)
         self._btn_save.on_clicked(lambda _evt: self._save_game())
 
         # Global Stat button at lower-right area
         bax_global_stat = self.fig.add_axes([0.827, 0.002, 0.084, 0.025])
-        self._btn_global_stat = Button(bax_global_stat, 'Global Stat', color='#ffd9b3')
+        self._btn_global_stat = Button(bax_global_stat, '全局统计', color='#ffd9b3')
         self._btn_global_stat.label.set_fontsize(12)
         self._btn_global_stat.on_clicked(lambda _evt: self._show_global_stat_window())
 
         # Segment edit mode button
         bax_edit_seg = self.fig.add_axes([0.737, 0.002, 0.084, 0.025])
-        self._btn_edit_seg = Button(bax_edit_seg, 'EditSeg', color='#ffe0b3')
+        self._btn_edit_seg = Button(bax_edit_seg, '路径编辑', color='#ffe0b3')
         self._btn_edit_seg.label.set_fontsize(12)
         self._btn_edit_seg.on_clicked(lambda _evt: self._toggle_segment_edit_mode())
 
         # Export day sheets to workbook template
         bax_export_xlsx = self.fig.add_axes([0.647, 0.002, 0.084, 0.025])
-        self._btn_export_xlsx = Button(bax_export_xlsx, 'SaveXLX', color='#d9f2ff')
+        self._btn_export_xlsx = Button(bax_export_xlsx, '导出表', color='#d9f2ff')
         self._btn_export_xlsx.label.set_fontsize(12)
         self._btn_export_xlsx.on_clicked(lambda _evt: self._export_day_sheets_xlsx())
 
         # Add three team switch buttons at right side, just above symbol display area
-        bax_team1 = self.fig.add_axes([0.899, 0.735, 0.022, 0.025])
+        bax_team1 = self.fig.add_axes([0.909, 0.735, 0.022, 0.025])
         self._btn_team1 = Button(bax_team1, 'T1', color='#38BBED')
         self._btn_team1.label.set_fontsize(17)
         self._btn_team1.label.set_color('#FFFF00')
         self._btn_team1.on_clicked(lambda _evt: self._on_team_button_click(1))
 
-        bax_team2 = self.fig.add_axes([0.927, 0.735, 0.022, 0.025])
+        bax_team2 = self.fig.add_axes([0.937, 0.735, 0.022, 0.025])
         self._btn_team2_switch = Button(bax_team2, 'T2', color='#92C73E')
         self._btn_team2_switch.label.set_fontsize(17)
         self._btn_team2_switch.label.set_color('#FFFF00')
         self._btn_team2_switch.on_clicked(lambda _evt: self._on_team_button_click(2))
 
-        bax_team3 = self.fig.add_axes([0.955, 0.735, 0.022, 0.025])
+        bax_team3 = self.fig.add_axes([0.965, 0.735, 0.022, 0.025])
         self._btn_team3_switch = Button(bax_team3, 'T3', color='#E74C3C')
         self._btn_team3_switch.label.set_fontsize(17)
         self._btn_team3_switch.label.set_color('#FFFF00')
@@ -547,7 +577,7 @@ class PathfindingDemo:
         self._team_button_dblclick_window_sec = 0.40
 
         # Team action display area (large enough for 30+ symbols)
-        self._team_action_ax = self.fig.add_axes([0.90, 0.15, 0.10, 0.60])
+        self._team_action_ax = self.fig.add_axes([0.91, 0.15, 0.09, 0.60])
         self._team_action_ax.axis('off')
 
         # Day stats display area (food left and cumulated reward) - above team buttons
@@ -559,6 +589,7 @@ class PathfindingDemo:
         self.fig.canvas.mpl_connect('scroll_event', self._on_scroll)
         self.fig.canvas.mpl_connect('motion_notify_event', self._on_motion)
         self.fig.canvas.mpl_connect('key_press_event', self._on_key_press)
+        self.fig.canvas.mpl_connect('resize_event', self._on_resize)
         self.fig.canvas.mpl_connect('close_event', self._on_main_window_closed)
 
         # Initialize team button colors
@@ -592,6 +623,57 @@ class PathfindingDemo:
     def _on_global_stat_window_closed(self, _event):
         """Track when the global stat window is closed by the user."""
         self._global_stat_window_open = False
+
+    def _get_scaled_map_bounds(self):
+        """Return full-map bounds in scaled display coordinates."""
+        xmin = -HEX_SIZE * 2 * X_SCALE
+        xmax = ((COLS - 1) * 1.5 * HEX_SIZE + 2 * HEX_SIZE) * X_SCALE
+        ymin = -HEX_SIZE * 2 * Y_SCALE
+        ymax = ((ROWS - 1) * np.sqrt(3) * HEX_SIZE + np.sqrt(3) * HEX_SIZE) * Y_SCALE
+        return xmin, xmax, ymin, ymax
+
+    def _compute_fit_limits_for_axes(self):
+        """Compute x/y limits that fit the full map into current axes size."""
+        xmin, xmax, ymin, ymax = self._get_scaled_map_bounds()
+        map_w = max(1e-6, xmax - xmin)
+        map_h = max(1e-6, ymax - ymin)
+
+        try:
+            bbox = self.ax.get_window_extent()
+            ax_w = max(1.0, float(bbox.width))
+            ax_h = max(1.0, float(bbox.height))
+        except Exception:
+            ax_w = map_w
+            ax_h = map_h
+
+        ax_ratio = ax_w / ax_h
+        map_ratio = map_w / map_h
+
+        if ax_ratio >= map_ratio:
+            # Axes are wider than map: expand x-span to keep aspect and fit height.
+            target_w = map_h * ax_ratio
+            pad_x = (target_w - map_w) * 0.5
+            return (xmin - pad_x, xmax + pad_x), (ymin, ymax)
+
+        # Axes are taller than map: expand y-span to keep aspect and fit width.
+        target_h = map_w / ax_ratio
+        pad_y = (target_h - map_h) * 0.5
+        return (xmin, xmax), (ymin - pad_y, ymax + pad_y)
+
+    def _on_resize(self, _event):
+        """Keep map view fitted to window size while preserving hex proportions."""
+        if self._has_zoomed:
+            return
+        try:
+            fit_xlim, fit_ylim = self._compute_fit_limits_for_axes()
+            self._default_xlim = fit_xlim
+            self._default_ylim = fit_ylim
+            self.ax.set_xlim(fit_xlim)
+            self.ax.set_ylim(fit_ylim)
+            self.ax.set_aspect('equal', adjustable='box')
+            self.fig.canvas.draw_idle()
+        except Exception:
+            pass
 
     def _refresh_open_stat_windows(self):
         """Refresh stat windows that are currently open so tables stay live."""
@@ -745,7 +827,7 @@ class PathfindingDemo:
                 
                 # Draw in lighter color with lower z-order
                 line_scale = self._get_path_line_scale()
-                line_width_factor = 0.7  # Make all path lines 30% thinner
+                line_width_factor = 1.4  # 2x wider than previous path width setting
                 self._hover_path_line = self.ax.plot(xs, ys, color=team_color, lw=3.5 * line_scale * line_width_factor,
                                                      zorder=2, alpha=0.4, linestyle='--',
                                                      solid_capstyle='round', solid_joinstyle='round')[0]
@@ -894,7 +976,7 @@ class PathfindingDemo:
             return
 
         preview_alpha = 0.42
-        preview_lw = max(1.6 * self._get_path_line_scale() * 0.7, 0.7)
+        preview_lw = max(1.6 * self._get_path_line_scale() * 1.4, 0.08)
 
         for seg in preview_segments:
             start_pos = tuple(seg['start_pos'])
@@ -1879,6 +1961,56 @@ class PathfindingDemo:
         else:
             self._btn_team3_switch.label.set_text('—')
 
+    def _animate_view_to(self, target_xlim, target_ylim, duration_ms=90, steps=18):
+        """Animate axis limits to target quickly for smooth map panning."""
+        try:
+            if self._view_anim_timer is not None:
+                self._view_anim_timer.stop()
+                self._view_anim_timer = None
+        except Exception:
+            self._view_anim_timer = None
+
+        cur_xlim = self.ax.get_xlim()
+        cur_ylim = self.ax.get_ylim()
+        sx0, sx1 = float(cur_xlim[0]), float(cur_xlim[1])
+        sy0, sy1 = float(cur_ylim[0]), float(cur_ylim[1])
+        tx0, tx1 = float(target_xlim[0]), float(target_xlim[1])
+        ty0, ty1 = float(target_ylim[0]), float(target_ylim[1])
+
+        if (abs(sx0 - tx0) < 1e-9 and abs(sx1 - tx1) < 1e-9 and
+                abs(sy0 - ty0) < 1e-9 and abs(sy1 - ty1) < 1e-9):
+            return
+
+        # Preserve view across redraws while animating.
+        self._has_zoomed = True
+
+        steps = max(1, int(steps))
+        interval = max(10, int(duration_ms / steps))
+        state = {'i': 0}
+
+        def _tick():
+            state['i'] += 1
+            t = state['i'] / steps
+            # Ease-out cubic for fast but smooth landing.
+            u = 1.0 - (1.0 - t) ** 3
+            nx0 = sx0 + (tx0 - sx0) * u
+            nx1 = sx1 + (tx1 - sx1) * u
+            ny0 = sy0 + (ty0 - sy0) * u
+            ny1 = sy1 + (ty1 - sy1) * u
+            self.ax.set_xlim(nx0, nx1)
+            self.ax.set_ylim(ny0, ny1)
+            self.ax.set_aspect('equal', adjustable='box')
+            self.fig.canvas.draw_idle()
+
+            if state['i'] >= steps and self._view_anim_timer is not None:
+                self._view_anim_timer.stop()
+                self._view_anim_timer = None
+
+        self._view_anim_timer = self.fig.canvas.new_timer(interval=interval)
+        self._view_anim_timer.single_shot = False
+        self._view_anim_timer.callbacks.append((_tick, (), {}))
+        self._view_anim_timer.start()
+
     def _center_view_on_active_team(self):
         """Center the view on the active team's current position while keeping current zoom level."""
         if self.active_team is None:
@@ -1896,8 +2028,8 @@ class PathfindingDemo:
         cur_ylim = self.ax.get_ylim()
         view_width = cur_xlim[1] - cur_xlim[0]
         view_height = cur_ylim[1] - cur_ylim[0]
-        
-        # Center on team position with same zoom level
+
+        # Instant move (no animation)
         self.ax.set_xlim(cx_scaled - view_width / 2, cx_scaled + view_width / 2)
         self.ax.set_ylim(cy_scaled - view_height / 2, cy_scaled + view_height / 2)
 
@@ -2059,6 +2191,7 @@ class PathfindingDemo:
                 # Active team: bright color
                 btn.color = self.team_colors[i]
                 btn.hovercolor = self.team_colors[i]
+                btn.label.set_fontweight('bold')
             else:
                 # Inactive team: dimmed color
                 original_color = self.team_colors[i]
@@ -2068,6 +2201,7 @@ class PathfindingDemo:
                 dimmed_color = f'#{dimmed_r:02x}{dimmed_g:02x}{dimmed_b:02x}'
                 btn.color = dimmed_color
                 btn.hovercolor = dimmed_color
+                btn.label.set_fontweight('normal')
         
         self.fig.canvas.draw_idle()
 
@@ -2114,6 +2248,30 @@ class PathfindingDemo:
         max_actions = max(max_actions, 30)  # Minimum 30 symbols support
         y_start = max_actions * 0.45 + 1  # Starting y position with spacing for larger symbols
         self._team_action_ax.set_ylim(0, y_start + 1)
+
+        # Align symbol columns with the actual on-screen centers of team buttons.
+        x_positions = [0.4, 1.1, 1.8]  # Fallback when layout info is unavailable.
+        try:
+            action_bbox = self._team_action_ax.get_position()
+            ax_x0 = float(action_bbox.x0)
+            ax_w = max(1e-6, float(action_bbox.width))
+            x_min, x_max = self._team_action_ax.get_xlim()
+            x_span = max(1e-6, float(x_max - x_min))
+
+            buttons = [self._btn_team1, self._btn_team2_switch, self._btn_team3_switch]
+            mapped = []
+            for btn in buttons:
+                b = btn.ax.get_position()
+                btn_center_fig_x = float(b.x0 + b.width * 0.5)
+                rel_x = (btn_center_fig_x - ax_x0) / ax_w
+                mapped_x = x_min + rel_x * x_span
+                mapped_x = min(max(mapped_x, x_min + 0.08 * x_span), x_max - 0.08 * x_span)
+                mapped.append(mapped_x)
+
+            if len(mapped) == 3:
+                x_positions = mapped
+        except Exception:
+            pass
         
         # Second pass: draw symbols
         for team_idx, (team, team_num) in enumerate([(self.team1, 1), (self.team2, 2), (self.team3, 3)]):
@@ -2127,7 +2285,7 @@ class PathfindingDemo:
                     actions_today.extend(team._seg_action_sequence[seg_idx])
             
             # Position for each team vertically (start from top, right below buttons)
-            x_pos = 0.4 + team_idx * 0.7
+            x_pos = x_positions[team_idx]
             y_pos = y_start  # Start at top of symbol display area
             
             # Draw symbols in the order they appear in actions_today
@@ -2208,8 +2366,8 @@ class PathfindingDemo:
         
         # Create table data
         table_data = [
-            ['Food', f'{food_left}'],
-            ['Reward', f'{cumulated_reward}']
+            ['余粮', f'{food_left}'],
+            ['总分', f'{cumulated_reward}']
         ]
         
         # Create table
@@ -2326,21 +2484,42 @@ class PathfindingDemo:
         else:
             self.current_food = base_food
 
-    def _get_path_line_scale(self, x_span=None):
-        """Return a zoom-aware scale factor for path/preview line widths."""
-        default_xmin = -HEX_SIZE * 2 * X_SCALE
-        default_xmax = ((COLS - 1) * 1.5 * HEX_SIZE + 2 * HEX_SIZE) * X_SCALE
-        default_span = max(default_xmax - default_xmin, 1e-6)
+    def _get_path_line_scale(self, xlim=None, ylim=None):
+        """Return a zoom-aware scale factor based on current on-screen hex size."""
+        def _hex_radius_px(xl, yl):
+            try:
+                bbox = self.ax.get_window_extent()
+                ax_w = max(float(bbox.width), 1.0)
+                ax_h = max(float(bbox.height), 1.0)
+            except Exception:
+                return None
 
-        if x_span is None:
+            x_span = max(abs(float(xl[1]) - float(xl[0])), 1e-6)
+            y_span = max(abs(float(yl[1]) - float(yl[0])), 1e-6)
+            px_per_x = ax_w / x_span
+            px_per_y = ax_h / y_span
+
+            # Radius is anisotropically scaled in data-space by X/Y display transforms.
+            rx = HEX_SIZE * 0.97 * X_SCALE * px_per_x
+            ry = HEX_SIZE * 0.97 * Y_SCALE * px_per_y
+            return max(min(rx, ry), 1e-6)
+
+        if xlim is None or ylim is None:
             cur_xlim = self.ax.get_xlim()
-            cur_span = abs(cur_xlim[1] - cur_xlim[0])
+            cur_ylim = self.ax.get_ylim()
         else:
-            cur_span = abs(x_span)
-        cur_span = max(cur_span, 1e-6)
+            cur_xlim = xlim
+            cur_ylim = ylim
 
-        scale = default_span / cur_span
-        return max(0.6, min(scale, 3.0))
+        fit_xlim, fit_ylim = self._compute_fit_limits_for_axes()
+
+        cur_hex_px = _hex_radius_px(cur_xlim, cur_ylim)
+        base_hex_px = _hex_radius_px(fit_xlim, fit_ylim)
+        if cur_hex_px is None or base_hex_px is None:
+            return 1.0
+
+        scale = cur_hex_px / base_hex_px
+        return max(0.25, min(scale, 40.0))
 
     def _advance_day(self):
         """Manually advance to next day (just changes viewing index, doesn't modify team state)."""
@@ -2641,7 +2820,7 @@ class PathfindingDemo:
         """Toggle checkbox state and update button appearance."""
         self._chk_state = not self._chk_state
         # Update button text with checkmark/empty box
-        text = '☑ Show B/X/Z' if self._chk_state else '☐ Show B/X/Z'
+        text = '☑ 显示buff' if self._chk_state else '☐ 显示buff'
         self._btn_chk_labels.label.set_text(text)
         # Update button color
         color = '#90EE90' if self._chk_state else '#FFCCCC'
@@ -2654,6 +2833,24 @@ class PathfindingDemo:
     def _toggle_bonus_labels(self):
         """Toggle visibility of B/X/Z bonus hex labels."""
         self._show_bonus_labels = not self._show_bonus_labels
+        self._draw()
+
+    def _update_show_future_button_state(self):
+        """Refresh the future-path toggle button visual state."""
+        if not hasattr(self, '_btn_show_future') or self._btn_show_future is None:
+            return
+
+        text = '☑ 显示未来' if self._show_future_paths else '☐ 显示未来'
+        self._btn_show_future.label.set_text(text)
+        self._btn_show_future.color = '#90EE90' if self._show_future_paths else '#FFCCCC'
+        self._btn_show_future.hovercolor = '#7FDF7F' if self._show_future_paths else '#FFB3B3'
+
+    def _toggle_show_future_paths(self):
+        """Toggle map visibility for segments whose day is later than current day."""
+        self._show_future_paths = not self._show_future_paths
+        state_text = '显示' if self._show_future_paths else '隐藏'
+        self._status_msg = f'未来路径已{state_text}'
+        self._update_show_future_button_state()
         self._draw()
 
     def _reset_path(self):
@@ -2816,12 +3013,12 @@ class PathfindingDemo:
 
         m_tower = re.fullmatch(r'T([2-6])', token)
         if m_tower:
-            return f'塔{m_tower.group(1)}'
+            return f'草{m_tower.group(1)}'
 
         # Requirement: BXZ123 are exported as T123-equivalent labels.
         m_bxz = re.fullmatch(r'[BXZ]([123])', token)
         if m_bxz:
-            return f'塔{m_bxz.group(1)}'
+            return f'草{m_bxz.group(1)}'
 
         return ''
 
@@ -2855,8 +3052,8 @@ class PathfindingDemo:
         """Compute BXZ-driven adjustment totals per day.
 
         Returns:
-          day_food_adj: {day: positive int}    -> write into 调粮 (C3)
-          day_reward_adj: {day: positive int}  -> write into 调分 (C5)
+                    day_food_adj: {day: positive int}    -> write into 调粮 (C4)
+                    day_reward_adj: {day: positive int}  -> write into 调分 (C6)
           day_team_step_bonus: {day: {1:int,2:int,3:int}}
         """
         day_food_adj = {}
@@ -2908,6 +3105,14 @@ class PathfindingDemo:
                     if final_token in z_bonus_map:
                         z_rem = z_bonus_map[final_token]
 
+                # Gameplay parity: portal interaction consumes one extra movement
+                # for B discount / Z reward bonus (in addition to normal new-hex decrements).
+                if re.fullmatch(r'P\d+', final_token):
+                    if b_rem > 0:
+                        b_rem -= 1
+                    if z_rem > 0:
+                        z_rem -= 1
+
         return day_food_adj, day_reward_adj, day_team_step_bonus
 
     def _build_excel_operations_by_day_team(self):
@@ -2917,6 +3122,24 @@ class PathfindingDemo:
         - Untaken portal: 跳5
         - Taken portal: 跳1
         """
+        def _merge_consecutive_jump_labels(op_list):
+            """Merge consecutive 跳N labels into a single aggregated 跳X label."""
+            merged = []
+            jump_acc = 0
+            for op in op_list:
+                m = re.fullmatch(r'跳(\d+)', str(op))
+                if m:
+                    jump_acc += int(m.group(1))
+                    continue
+                if jump_acc > 0:
+                    merged.append(f'跳{jump_acc}')
+                    jump_acc = 0
+                merged.append(op)
+
+            if jump_acc > 0:
+                merged.append(f'跳{jump_acc}')
+            return merged
+
         operations_by_day_team = {(d, t): [] for d in range(1, 91) for t in (1, 2, 3)}
         events = []
 
@@ -2925,7 +3148,14 @@ class PathfindingDemo:
                 continue
 
             for seg_idx, seg_day, seg_start, seg_end, seg_actions, _seg_len in self._segment_iter(team):
-                ops = []
+                entries = []
+                seg_is_fly = (
+                    seg_idx < len(team._seg_is_fly_skill)
+                    and bool(team._seg_is_fly_skill[seg_idx])
+                )
+                if seg_is_fly:
+                    entries.append({'label': '飞雷', 'is_new_g': False})
+
                 for action in seg_actions:
                     if not isinstance(action, (list, tuple)) or len(action) < 2:
                         continue
@@ -2943,11 +3173,47 @@ class PathfindingDemo:
                         continue
 
                     if action_type == 'jump':
-                        ops.append('跳1')
+                        entries.append({'label': '跳1', 'is_new_g': False})
                     elif action_type == 'new':
                         label = self._operation_label_from_token(token)
                         if label:
-                            ops.append(label)
+                            entries.append({
+                                'label': label,
+                                'is_new_g': token in ('G', 'g'),
+                                'g_pos': h if token in ('G', 'g') else None,
+                            })
+
+                # Backward-compatibility: some legacy saves have empty segment
+                # action history. Reconstruct a minimal end-of-segment action so
+                # export does not drop labels like 商人 on that day.
+                if not seg_actions and seg_end is not None:
+                    seg_new_hexes = team._seg_new_hexes[seg_idx] if seg_idx < len(team._seg_new_hexes) else []
+                    seg_jumps = team._seg_jumps[seg_idx] if seg_idx < len(team._seg_jumps) else []
+                    seg_new_set = {
+                        tuple(h) for h in seg_new_hexes
+                        if isinstance(h, (list, tuple)) and len(h) == 2
+                    }
+                    seg_jump_set = {
+                        tuple(h) for h in seg_jumps
+                        if isinstance(h, (list, tuple)) and len(h) == 2
+                    }
+
+                    token_end = (
+                        RAW_MAP[seg_end[0]][seg_end[1]]
+                        if 0 <= seg_end[0] < ROWS and 0 <= seg_end[1] < COLS
+                        else ''
+                    )
+                    if not re.fullmatch(r'P\d+', token_end):
+                        if seg_end in seg_jump_set:
+                            entries.append({'label': '跳1', 'is_new_g': False})
+                        else:
+                            label_end = self._operation_label_from_token(token_end)
+                            if label_end and (seg_end in seg_new_set or not seg_new_set):
+                                entries.append({
+                                    'label': label_end,
+                                    'is_new_g': token_end in ('G', 'g'),
+                                    'g_pos': seg_end if token_end in ('G', 'g') else None,
+                                })
 
                 portal_source, portal_dest = self._infer_segment_portal_info(team, seg_start, seg_end)
 
@@ -2955,26 +3221,89 @@ class PathfindingDemo:
                     'day': seg_day,
                     'team_num': team_num,
                     'seg_idx': seg_idx,
-                    'ops': ops,
+                    'entries': entries,
                     'portal_source': portal_source,
                     'portal_dest': portal_dest,
                 })
 
         events.sort(key=lambda e: (e['day'], e['team_num'], e['seg_idx']))
         taken_portals = set()
+        taken_portal_tokens = set()
 
+        visited_g = set()
+        for team in (self.team1, self.team2, self.team3):
+            if team is not None and team.origin in self.all_g_lands:
+                visited_g.add(team.origin)
+        unvisited_g = set(self.all_g_lands) - visited_g
+
+        day_events = {}
         for ev in events:
-            key = (ev['day'], ev['team_num'])
-            operations_by_day_team[key].extend(ev['ops'])
+            day_events.setdefault(ev['day'], []).append(ev)
 
-            portal_source = ev['portal_source']
-            portal_dest = ev['portal_dest']
-            if portal_source is not None:
-                jump_label = '跳5' if portal_source not in taken_portals else '跳1'
-                operations_by_day_team[key].append(jump_label)
-                taken_portals.add(portal_source)
-                if portal_dest is not None:
-                    taken_portals.add(portal_dest)
+        for day in sorted(day_events.keys()):
+            pending = list(day_events[day])
+
+            while pending:
+                chosen_idx = 0
+                # If exactly one G/g is missing globally, process the segment that
+                # captures that decisive last G/g before other teams on this day.
+                if len(unvisited_g) == 1:
+                    decisive_pos = next(iter(unvisited_g))
+                    g_first_idx = next(
+                        (
+                            i for i, pev in enumerate(pending)
+                            if any(ent.get('g_pos') == decisive_pos for ent in pev.get('entries', []))
+                        ),
+                        None
+                    )
+                    if g_first_idx is not None:
+                        chosen_idx = g_first_idx
+
+                ev = pending.pop(chosen_idx)
+                key = (ev['day'], ev['team_num'])
+                entries = list(ev.get('entries', []))
+
+                # Within that segment, move the decisive last G/g action to the front.
+                if len(unvisited_g) == 1:
+                    decisive_pos = next(iter(unvisited_g))
+                    final_g_idx = next((i for i, e in enumerate(entries) if e.get('g_pos') == decisive_pos), None)
+                    if final_g_idx is not None and final_g_idx > 0:
+                        final_g_entry = entries.pop(final_g_idx)
+                        entries.insert(0, final_g_entry)
+
+                operations_by_day_team[key].extend(e.get('label', '') for e in entries)
+
+                for e in entries:
+                    g_pos = e.get('g_pos')
+                    if g_pos in unvisited_g:
+                        unvisited_g.remove(g_pos)
+
+                portal_source = ev['portal_source']
+                portal_dest = ev['portal_dest']
+                if portal_source is not None:
+                    portal_ref = portal_dest if portal_dest is not None else portal_source
+                    portal_token = (
+                        RAW_MAP[portal_ref[0]][portal_ref[1]]
+                        if portal_ref is not None and 0 <= portal_ref[0] < ROWS and 0 <= portal_ref[1] < COLS
+                        else ''
+                    )
+
+                    is_taken = (
+                        portal_token in taken_portal_tokens
+                        if re.fullmatch(r'P\d+', portal_token)
+                        else portal_source in taken_portals
+                    )
+                    jump_label = '跳1' if is_taken else '跳5'
+                    operations_by_day_team[key].append(jump_label)
+
+                    if re.fullmatch(r'P\d+', portal_token):
+                        taken_portal_tokens.add(portal_token)
+                    taken_portals.add(portal_source)
+                    if portal_dest is not None:
+                        taken_portals.add(portal_dest)
+
+        for key, ops in operations_by_day_team.items():
+            operations_by_day_team[key] = _merge_consecutive_jump_labels(ops)
 
         return operations_by_day_team
 
@@ -2982,6 +3311,7 @@ class PathfindingDemo:
         """Export operations into day sheets (1..90) of an Excel template workbook."""
         try:
             import os
+            import sys
 
             # Immediate feedback so users can tell the button click was received.
             self._status_msg = 'SaveXLX clicked: exporting...'
@@ -3007,26 +3337,47 @@ class PathfindingDemo:
                     pass
                 return
 
-            # One-click export: no file dialogs, write to workspace by default.
-            project_dir = os.path.dirname(os.path.abspath(__file__))
-            default_template = os.path.join(project_dir, 'S24_分表2.0.xlsx')
-            if not os.path.exists(default_template):
-                self._status_msg = 'Export error: template not found (S24_分表2.0.xlsx).'
+            # One-click export: in packaged app, prefer the exe folder (not _MEIPASS temp folder).
+            if getattr(sys, 'frozen', False):
+                base_dir = os.path.dirname(os.path.abspath(sys.executable))
+            else:
+                base_dir = os.path.dirname(os.path.abspath(__file__))
+
+            search_dirs = [base_dir]
+            script_dir = os.path.dirname(os.path.abspath(__file__))
+            if script_dir not in search_dirs:
+                search_dirs.append(script_dir)
+            meipass_dir = getattr(sys, '_MEIPASS', None)
+            if meipass_dir and meipass_dir not in search_dirs:
+                search_dirs.append(meipass_dir)
+
+            template_names = ['S24_分表2.0_导出模板.xlsx', 'S24_分表2.0.xlsx']
+            template_path = None
+            for d in search_dirs:
+                for name in template_names:
+                    cand = os.path.join(d, name)
+                    if os.path.exists(cand):
+                        template_path = cand
+                        break
+                if template_path:
+                    break
+
+            if not template_path:
+                self._status_msg = 'Export error: template not found (S24_分表2.0_导出模板.xlsx / S24_分表2.0.xlsx).'
                 self._draw()
-                print(f'ERROR: template not found: {default_template}')
+                print(f'ERROR: template not found in: {search_dirs}')
                 try:
                     import tkinter as _tk
                     from tkinter import messagebox as _msgbox
                     _root = _tk.Tk()
                     _root.withdraw()
-                    _msgbox.showerror('SaveXLX', f'Template not found:\n{default_template}')
+                    _msgbox.showerror('SaveXLX', 'Template not found:\n' + '\n'.join(search_dirs))
                     _root.destroy()
                 except Exception:
                     pass
                 return
 
-            template_path = default_template
-            output_path = os.path.join(project_dir, 'S24_分表2.0_export.xlsx')
+            output_path = os.path.join(base_dir, 'S24_分表2.0_export.xlsx')
 
             wb = load_workbook(template_path)
 
@@ -3062,8 +3413,9 @@ class PathfindingDemo:
                         ws.cell(row=row, column=col, value=ops[slot_idx] if slot_idx < len(ops) else None)
 
                 # BXZ adjustment columns requested by user.
-                ws['C3'] = int(day_food_adj.get(day, 0))
-                ws['C5'] = int(day_reward_adj.get(day, 0))
+                ws['C4'] = int(day_food_adj.get(day, 0))
+                weekly_extra_reward = 500 if (day == 1 or (day - 1) % 7 == 3) else 0
+                ws['C6'] = int(day_reward_adj.get(day, 0)) + weekly_extra_reward
 
                 # 结束行动: write actual end-of-day action counts from rebuilt day_records.
                 rec = self.day_records[day - 1] if 1 <= day <= len(self.day_records) else {}
@@ -4423,6 +4775,10 @@ class PathfindingDemo:
         
         self.ax.clear()
 
+        # Pre-compute fitted limits early; after ax.clear() temporary limits are (0,1),
+        # which can make width scaling explode if used directly.
+        fit_xlim, fit_ylim = self._compute_fit_limits_for_axes()
+
         # Background watermark tiled across the whole map (behind terrain/path layers).
         y = -0.05
         row_idx = 0
@@ -4449,10 +4805,10 @@ class PathfindingDemo:
             row_idx += 1
 
         # Use previous view span for line scaling when zoom is active.
-        if self._has_zoomed and saved_xlim is not None:
-            path_line_scale = self._get_path_line_scale(saved_xlim[1] - saved_xlim[0])
+        if self._has_zoomed and saved_xlim is not None and saved_ylim is not None:
+            path_line_scale = self._get_path_line_scale(saved_xlim, saved_ylim)
         else:
-            path_line_scale = self._get_path_line_scale()
+            path_line_scale = self._get_path_line_scale(fit_xlim, fit_ylim)
 
         C_ORIGIN  = '#22cc55'
         C_CURRENT = '#ff9900'
@@ -4508,7 +4864,7 @@ class PathfindingDemo:
                                     zorder=5, color='#000000')
 
         # Draw paths for each team
-        line_width_factor = 0.7  # Make all path lines 30% thinner
+        line_width_factor = 1.4  # 2x wider than previous path width setting
         teams = [(self.team1, 1), (self.team2, 2), (self.team3, 3)]
         for team, team_num in teams:
             if team is None:
@@ -4549,6 +4905,11 @@ class PathfindingDemo:
                         and seg_idx_for_edge < len(team._seg_is_fly_skill)
                         and team._seg_is_fly_skill[seg_idx_for_edge]
                     )
+
+                    prev_day_for_edge = path_to_day.get(i - 1, team.created_day)
+                    seg_day = path_to_day.get(i, prev_day_for_edge)
+                    if (not self._show_future_paths) and seg_day > self.current_day:
+                        continue
 
                     # Never draw straight connections between portal hexes.
                     token_prev = RAW_MAP[prev_pos[0]][prev_pos[1]] if 0 <= prev_pos[0] < ROWS and 0 <= prev_pos[1] < COLS else ''
@@ -4652,7 +5013,7 @@ class PathfindingDemo:
                                     curve_x,
                                     curve_y,
                                     color=color,
-                                    lw=max(0.55 * path_line_scale * line_width_factor, 0.38),
+                                    lw=max(0.55 * path_line_scale * line_width_factor, 0.06),
                                     alpha=0.72,
                                     zorder=6,
                                     solid_capstyle='round',
@@ -4660,8 +5021,6 @@ class PathfindingDemo:
                                 )
                         continue
 
-                    prev_day_for_edge = path_to_day.get(i - 1, team.created_day)
-                    seg_day = path_to_day.get(i, prev_day_for_edge)
                     is_selected_edit_day_edge = (
                         self._segment_edit_mode
                         and self._day_edit_context is None
@@ -4686,17 +5045,17 @@ class PathfindingDemo:
                     if seg_day != prev_day_for_edge:
                         if is_selected_edit_day_edge:
                             self.ax.plot(xs, ys, color='white',
-                                         lw=3.0 * max(3.1 * path_line_scale * line_width_factor, 2.2),
+                                         lw=3.0 * (3.1 * path_line_scale * line_width_factor),
                                          linestyle=(0, (2.2, 3.2)), alpha=0.95, zorder=8,
                                          solid_capstyle='round', solid_joinstyle='round')
                         if seg_day == self.current_day:
-                            dash_lw = max(0.95 * path_line_scale * line_width_factor, 0.75 * line_width_factor)
+                            dash_lw = 0.95 * path_line_scale * line_width_factor
                             self.ax.plot(xs, ys, color=highlight_color,
-                                         lw=dash_lw + max(0.95 * path_line_scale * line_width_factor, 0.75),
+                                         lw=0.75 * (dash_lw + (0.95 * path_line_scale * line_width_factor)),
                                          linestyle=(0, (2.2, 3.2)), alpha=1.0, zorder=6,
                                          solid_capstyle='round', solid_joinstyle='round')
                         self.ax.plot(xs, ys, color=edge_color,
-                                     lw=max(0.95 * path_line_scale * line_width_factor, 0.75 * line_width_factor),
+                                     lw=0.95 * path_line_scale * line_width_factor,
                                      linestyle=(0, (2.2, 3.2)), alpha=edge_alpha, zorder=7,
                                      solid_capstyle='round', solid_joinstyle='round')
                         continue
@@ -4704,14 +5063,14 @@ class PathfindingDemo:
                     if seg_day == self.current_day:
                         # Keep core stroke width identical, but add a visible yellow border.
                         base_lw = 2.5 * path_line_scale * jump_width_factor * line_width_factor
-                        outline_lw = base_lw + max(1.45 * path_line_scale * line_width_factor, 1.05)
+                        outline_lw = base_lw + (1.45 * path_line_scale * line_width_factor)
                         if is_selected_edit_day_edge:
                             self.ax.plot(xs, ys, color='white',
-                                         lw=3.0 * (outline_lw + max(1.15 * path_line_scale * line_width_factor, 0.95)),
+                                         lw=3.0 * (outline_lw + (1.15 * path_line_scale * line_width_factor)),
                                          alpha=0.95, zorder=4,
                                          solid_capstyle='round', solid_joinstyle='round')
                         self.ax.plot(xs, ys, color=highlight_color,
-                                     lw=outline_lw, alpha=1.0, zorder=5,
+                                     lw=1.0 * outline_lw, alpha=1.0, zorder=5,
                                      solid_capstyle='round', solid_joinstyle='round')
                         self.ax.plot(xs, ys, color=edge_color,
                                      lw=base_lw, alpha=edge_alpha, zorder=6,
@@ -4719,7 +5078,7 @@ class PathfindingDemo:
                     else:
                         if is_selected_edit_day_edge:
                             self.ax.plot(xs, ys, color='white',
-                                         lw=3.0 * max((2.5 * path_line_scale * jump_width_factor * line_width_factor) + 1.6, 2.0),
+                                         lw=3.0 * ((2.5 * path_line_scale * jump_width_factor * line_width_factor) + (1.6 * path_line_scale * line_width_factor)),
                                          alpha=0.95,
                                          zorder=2, solid_capstyle='round', solid_joinstyle='round')
                         self.ax.plot(xs, ys, color=edge_color,
@@ -4727,15 +5086,21 @@ class PathfindingDemo:
                                      alpha=edge_alpha,
                                      zorder=3, solid_capstyle='round', solid_joinstyle='round')
 
-            # Draw current position marker (end of path)
-            cur = team.full_path[-1]
+            # Draw current position marker (end of currently visible path).
+            if self._show_future_paths:
+                cur = team.full_path[-1]
+            else:
+                visible_indices = [idx for idx, d in path_to_day.items() if d <= self.current_day and idx < len(team.full_path)]
+                cur_idx = max(visible_indices) if visible_indices else 0
+                cur = team.full_path[cur_idx]
             if cur != team.origin:
                 cx2, cy2 = _center(*cur)
                 self.ax.plot(cx2 * X_SCALE, cy2 * Y_SCALE, 'D',
                              color=self.team_colors[team_num], ms=9, zorder=6)
 
             # During day-edit redraw, keep future-day paths visible as preview overlay.
-            self._draw_day_edit_future_preview(team, self.team_colors[team_num])
+            if self._show_future_paths:
+                self._draw_day_edit_future_preview(team, self.team_colors[team_num])
 
         self._draw_segment_edit_targets()
 
@@ -4752,25 +5117,22 @@ class PathfindingDemo:
         
         self.ax.set_xlabel(status, fontsize=9)
 
-        # Axes limits - only reset if not zoomed (preserve zoom on redraw)
+        # Axes limits - keep full map fitted to current window size when not zoomed.
+        self._default_xlim = fit_xlim
+        self._default_ylim = fit_ylim
+
         if not self._has_zoomed:
-            width  = ((COLS - 1) * 1.5 * HEX_SIZE + 2 * HEX_SIZE) * X_SCALE
-            height = ((ROWS - 1) * np.sqrt(3) * HEX_SIZE + np.sqrt(3) * HEX_SIZE) * Y_SCALE
-            self.ax.set_xlim(-HEX_SIZE * 2 * X_SCALE, width)
-            self.ax.set_ylim(-HEX_SIZE * 2 * Y_SCALE, height)
+            self.ax.set_xlim(fit_xlim)
+            self.ax.set_ylim(fit_ylim)
         else:
             # Restore saved zoom limits if user had zoomed
             if saved_xlim is not None and saved_ylim is not None:
                 self.ax.set_xlim(saved_xlim)
                 self.ax.set_ylim(saved_ylim)
-        self.ax.set_aspect('auto')
+        # Preserve hex geometry when the window is resized.
+        self.ax.set_aspect('equal', adjustable='box')
         self.ax.axis('off')
 
-        # Save default limits on first draw
-        if self._default_xlim is None:
-            self._default_xlim = (-HEX_SIZE * 2 * X_SCALE, ((COLS - 1) * 1.5 * HEX_SIZE + 2 * HEX_SIZE) * X_SCALE)
-            self._default_ylim = (-HEX_SIZE * 2 * Y_SCALE, ((ROWS - 1) * np.sqrt(3) * HEX_SIZE + np.sqrt(3) * HEX_SIZE) * Y_SCALE)
-        
         # Update scrollbar visibility and position based on zoom
         cur_xlim = self.ax.get_xlim()
         cur_ylim = self.ax.get_ylim()
@@ -5208,7 +5570,7 @@ class PathfindingDemo:
 
         if needs_recreate:
             self.global_stat_fig = plt.figure(figsize=(8, 10))
-            self.global_stat_fig.canvas.manager.set_window_title('Global Stat')
+            self.global_stat_fig.canvas.manager.set_window_title('全局统计')
             self.global_stat_ax = self.global_stat_fig.add_axes([0.05, 0.05, 0.9, 0.9])
             self.global_stat_fig.canvas.mpl_connect('close_event', self._on_global_stat_window_closed)
 
@@ -5298,7 +5660,7 @@ class PathfindingDemo:
                 taken_all += row['taken']
 
             if rows:
-                col_labels = ['Hex', 'Terrain', 'Total', 'Taken', 'Remaining']
+                col_labels = ['地块', '地形', '总数', '已占领', '剩余']
                 tbl = ax.table(
                     cellText=rows,
                     colLabels=col_labels,
@@ -5371,13 +5733,13 @@ class PathfindingDemo:
             for team_num in (1, 2, 3):
                 s = jump_stats.get(team_num, {'before': 0, 'after': 0})
                 jump_rows.append([
-                    f'Team {team_num}',
+                    f'{team_num}队',
                     str(s['before']),
                     str(s['after']),
                     str(s['before'] + s['after'])
                 ])
 
-            jump_labels = ['Team', 'Jumps Before G/g', 'Jumps After G/g', 'Total']
+            jump_labels = ['队伍', '八卦前跳步', '八卦后跳步', '合计']
             jump_tbl = ax.table(
                 cellText=jump_rows,
                 colLabels=jump_labels,
@@ -5399,19 +5761,19 @@ class PathfindingDemo:
                     jump_tbl[r, c].set_facecolor(shade)
 
             ax.text(0.5, 0.225,
-                    'Jump Summary (Portal first=5, retake=1, fly-to-portal=0)',
+                    '跳步汇总（首传送门=5跳，重复传送=1跳，飞雷神到传送=0跳）',
                     transform=ax.transAxes,
                     fontsize=8, fontweight='bold', ha='center', va='bottom')
 
             title = (
-                'Global Hex Statistics'                
+                '全局地块统计'
             )
             ax.text(0.5, 0.99, title,
                     transform=ax.transAxes,
                     ha='center', va='top', fontsize=11, fontweight='bold')
 
             ax.text(0.02, 0.02,
-                    f'Total included hexes: {total_all}   |   Taken: {taken_all}   |   Remaining: {total_all - taken_all}',
+                    f'总地块：{total_all}   |   已占领：{taken_all}   |   剩余：{total_all - taken_all}',
                     transform=ax.transAxes,
                     fontsize=9, fontweight='bold', va='bottom')
 

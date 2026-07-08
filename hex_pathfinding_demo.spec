@@ -1,12 +1,17 @@
 # -*- mode: python ; coding: utf-8 -*-
 
+from PyInstaller.utils.hooks import collect_data_files, collect_submodules
+
+openpyxl_hiddenimports = collect_submodules('openpyxl')
+openpyxl_datas = collect_data_files('openpyxl')
+
 
 a = Analysis(
     ['hex_pathfinding_demo.py'],
     pathex=[],
     binaries=[],
-    datas=[],
-    hiddenimports=[],
+    datas=openpyxl_datas,
+    hiddenimports=openpyxl_hiddenimports,
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],

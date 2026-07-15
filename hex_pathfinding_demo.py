@@ -26,6 +26,13 @@ except Exception:
 # Disable matplotlib's default 'q' quit key to use Q for day navigation
 matplotlib.rcParams['keymap.quit'] = []
 
+# Hide the default TkAgg navigation toolbar (home/back/forward/pan/zoom/
+# subplot-config/save icons) and its coordinate status bar under every
+# window - the app has its own on-canvas buttons for pan/zoom/save, and the
+# toolbar's own pan/zoom-mode buttons would otherwise conflict with the
+# custom mouse handling (right-click drag to pan, scroll to zoom, etc.).
+matplotlib.rcParams['toolbar'] = 'None'
+
 # Prefer installed CJK fonts so Chinese text does not render as squares.
 try:
     from matplotlib import font_manager as _fm
@@ -49,6 +56,7 @@ except Exception:
 
 import matplotlib.pyplot as plt
 from matplotlib.patches import RegularPolygon, Rectangle, Circle
+from matplotlib.collections import PolyCollection
 from matplotlib.transforms import Affine2D
 from matplotlib.widgets import Button
 from matplotlib.colors import hex2color
@@ -80,6 +88,19 @@ HEX_SIZE = 5
 # Display-only angled-view transform: stretch x wider, compress y
 X_SCALE = 1
 Y_SCALE = 0.6
+
+# Unit hexagon vertex offsets - flat-top orientation (vertices at 0/60/120/.../300
+# degrees), matching redblobgames.com/grids/hexagons/ "flat topped" layout and the
+# original RegularPolygon(numVertices=6, orientation=radians(30)) output (matplotlib's
+# RegularPolygon starts its own vertex 0 at 90 degrees *before* adding `orientation`,
+# so orientation=30 deg there lands on the same {0,60,...,300} vertex set as the plain
+# 0-based angles used here - no extra offset needed).
+# Precomputed once so per-hex drawing only needs a cheap (cx, cy) translation instead
+# of building a new patch/transform object per hex.
+_HEX_VERT_ANGLES = np.arange(6) * (2 * np.pi / 6)
+_HEX_VERT_OFFSETS = np.column_stack((
+    np.cos(_HEX_VERT_ANGLES), np.sin(_HEX_VERT_ANGLES),
+)) * (HEX_SIZE * 0.97)
 
 # Marching game start: game coords (row=53, col=8) → internal 0-based (ir, ic)
 # NOTE: the raw game-start cell may be empty terrain (a boundary marker);
@@ -395,6 +416,7 @@ class PathfindingDemo:
         self._pan_start_y = None  # Starting y position for pan
         self._pan_start_xlim = None  # Map x-axis limits at pan start
         self._pan_start_ylim = None  # Map y-axis limits at pan start
+        self._pan_transform = None  # Data<->pixel transform frozen at pan start
         
         self._show_bonus_labels = True  # Toggle for showing B/X/Z bonus hex labels
         
@@ -711,14 +733,18 @@ class PathfindingDemo:
     def _on_motion(self, event):
         """Handle mouse motion - track hover and show preview after 0.5s, also handle panning."""
         # Handle right-click pan
-        if self._pan_active and event.xdata is not None and event.ydata is not None:
-            dx = event.xdata - self._pan_start_x
-            dy = event.ydata - self._pan_start_y
-            
+        if self._pan_active and event.x is not None and event.y is not None:
+            # Convert the raw pixel position through the transform frozen at
+            # drag-start (not self.ax.transData, which shifts every frame as we
+            # pan) so the delta is measured in one consistent reference frame.
+            cur_x, cur_y = self._pan_transform.transform((event.x, event.y))
+            dx = cur_x - self._pan_start_x
+            dy = cur_y - self._pan_start_y
+
             # Pan the map by adjusting axis limits (pan in opposite direction of mouse movement)
             new_xlim = (self._pan_start_xlim[0] - dx, self._pan_start_xlim[1] - dx)
             new_ylim = (self._pan_start_ylim[0] - dy, self._pan_start_ylim[1] - dy)
-            
+
             self.ax.set_xlim(new_xlim)
             self.ax.set_ylim(new_ylim)
             self.fig.canvas.draw_idle()
@@ -839,7 +865,11 @@ class PathfindingDemo:
         """Handle keyboard hotkeys - 1/2/3 to switch teams, Q/E for day navigation."""
         if event.key in ('1', '2', '3'):
             team_num = int(event.key)
-            self._switch_to_team(team_num)
+            # Share the same single-switch vs double-press-jumps-to-next-day logic
+            # as the T1/T2/T3 mouse buttons (see _on_team_button_click) instead of
+            # always doing a plain switch, so pressing "1" twice quickly behaves
+            # the same as double-clicking the T1 button.
+            self._on_team_button_click(team_num)
         elif event.key.lower() == 'q':
             self._go_previous_day()
         elif event.key.lower() == 'e':
@@ -1542,6 +1572,17 @@ class PathfindingDemo:
                 self._segment_edit_mode = False
                 self._status_msg = 'No active team selected for segment edit mode.'
             else:
+                # Snap the viewed day to the active team's own last action day
+                # before looking for its segments - otherwise opening Segment
+                # Edit while viewing a day this team never acted on (e.g. it's
+                # been idle while another team kept moving on later days)
+                # always finds zero segments and refuses to open, even though
+                # the team clearly has editable history on its own last day.
+                team_last_day = self._get_active_team_last_movement_day()
+                if team_last_day is not None and team_last_day != self.current_day:
+                    self.current_day = team_last_day
+                    self._sync_current_food_for_view_day()
+
                 segs_today = [s for s in self._get_team_segment_infos(self.active_team) if s['day'] == self.current_day]
                 if not segs_today:
                     self._segment_edit_mode = False
@@ -2045,14 +2086,20 @@ class PathfindingDemo:
         self.ax.set_xlim(cx_scaled - view_width / 2, cx_scaled + view_width / 2)
         self.ax.set_ylim(cy_scaled - view_height / 2, cy_scaled + view_height / 2)
 
-    def _center_view_on_active_team_day(self, day):
-        """Center view on active-team segment footprint for a selected day."""
+    def _center_view_on_active_team_day(self, day, move_if_empty=True):
+        """Center view on active-team segment footprint for a selected day.
+
+        If `move_if_empty` is False and the team has no segments on `day`,
+        the view is left untouched instead of falling back to the team's
+        overall last known position.
+        """
         if self.active_team is None:
             return
 
         segs = [s for s in self._get_team_segment_infos(self.active_team) if s['day'] == day]
         if not segs:
-            self._center_view_on_active_team()
+            if move_if_empty:
+                self._center_view_on_active_team()
             return
 
         xs = []
@@ -2069,7 +2116,8 @@ class PathfindingDemo:
                 ys.append(ny)
 
         if not xs or not ys:
-            self._center_view_on_active_team()
+            if move_if_empty:
+                self._center_view_on_active_team()
             return
 
         cx_scaled = (sum(xs) / len(xs)) * X_SCALE
@@ -2173,11 +2221,18 @@ class PathfindingDemo:
         
         if self.active_team is not target_team:
             self.active_team = target_team
-            self._status_msg = f'Switched to Team {team_num}'
+            # Food is one pool shared by all 3 teams, so surface it right away when
+            # switching - otherwise an idle team with plenty of steps left looks
+            # "stuck" for no visible reason once another team has spent it down.
+            self._status_msg = f'Switched to Team {team_num} (shared food remaining: {self.current_food})'
             self._update_switch_button_color()
             self._update_fly_button_state()
-            self._center_view_on_active_team()
-        
+            # Center on this team's action for the day currently being viewed,
+            # not its overall last-known position - and if it didn't act on
+            # this day at all, leave the view exactly where it was instead of
+            # jumping somewhere the user didn't ask to look.
+            self._center_view_on_active_team_day(self.current_day, move_if_empty=False)
+
         self._draw()
 
     def _update_switch_button_color(self):
@@ -2452,7 +2507,9 @@ class PathfindingDemo:
         revisit_cost = _apply_g_reduction(10, self._are_all_g_lands_visited())
         msg = (
             f'Not enough food! Need {needed_food}, have {self.current_food}. '
-            f'Steps available: {steps_available}.'
+            f'Steps available: {steps_available}. '
+            f'(Food is one shared pool across all 3 teams - other teams spending it '
+            f'is why an idle team can run low too, even with steps to spare.)'
         )
         if steps_available > 0:
             if self.current_food >= revisit_cost:
@@ -2547,7 +2604,9 @@ class PathfindingDemo:
         steps_str = ' | '.join(team_steps)
         
         self._status_msg = f'Day {self.current_day} | Food: {self.current_food} | Steps: {steps_str}'
-        self._center_view_on_active_team_day(self.current_day)
+        # Only recenter if the active team actually acted on the newly-viewed
+        # day; otherwise leave the view exactly where the user had it.
+        self._center_view_on_active_team_day(self.current_day, move_if_empty=False)
         self._auto_save_game()  # Auto-save day change
         self._draw()
 
@@ -2576,7 +2635,9 @@ class PathfindingDemo:
         steps_str = ' | '.join(team_steps)
         
         self._status_msg = f'Day {self.current_day} | Food: {self.current_food} | Steps: {steps_str}'
-        self._center_view_on_active_team_day(self.current_day)
+        # Only recenter if the active team actually acted on the newly-viewed
+        # day; otherwise leave the view exactly where the user had it.
+        self._center_view_on_active_team_day(self.current_day, move_if_empty=False)
         self._auto_save_game()  # Auto-save day change
         self._draw()
 
@@ -2601,7 +2662,9 @@ class PathfindingDemo:
         steps_str = ' | '.join(team_steps)
 
         self._status_msg = f'Day {self.current_day} | Food: {self.current_food} | Steps: {steps_str}'
-        self._center_view_on_active_team_day(self.current_day)
+        # Only recenter if the active team actually acted on the newly-viewed
+        # day; otherwise leave the view exactly where the user had it.
+        self._center_view_on_active_team_day(self.current_day, move_if_empty=False)
         self._auto_save_game()
         self._draw()
 
@@ -3832,6 +3895,11 @@ class PathfindingDemo:
             self._pan_start_y = event.ydata
             self._pan_start_xlim = self.ax.get_xlim()
             self._pan_start_ylim = self.ax.get_ylim()
+            # Freeze the data<->pixel transform at drag start. Motion deltas must be
+            # measured against this fixed transform, not the live one (which itself
+            # shifts every time we call set_xlim/set_ylim below), otherwise the
+            # reference frame moves out from under the drag and the map jitters.
+            self._pan_transform = self.ax.transData.inverted()
 
     def _switch_to_team_and_latest_plus_one_day(self, team_num):
         """Switch to team and jump to one day after that team's latest move day."""
@@ -3858,7 +3926,10 @@ class PathfindingDemo:
 
         self.current_day = target_day
         self._sync_current_food_for_view_day()
-        self._status_msg = f'Switched to Team {team_num} and jumped to Day {self.current_day}'
+        self._status_msg = (
+            f'Switched to Team {team_num} and jumped to Day {self.current_day} '
+            f'(shared food remaining: {self.current_food})'
+        )
         self._draw()
 
     def _on_team_button_click(self, team_num):
@@ -3974,6 +4045,19 @@ class PathfindingDemo:
                 self._status_msg = 'No active team selected.'
                 self._draw()
                 return
+
+            # A normal path click continues the active team's own timeline: snap the
+            # viewed day to that team's last action day (not whatever day happens to
+            # be globally displayed) before checking resources. Food is one pool
+            # shared by all 3 teams and accrues day by day, so a team that's been
+            # idle while another team kept spending on later days would otherwise
+            # look "out of food" for no reason visible to the user - it should
+            # instead keep acting from the day it actually left off.
+            if not self._is_active_day_edit():
+                team_last_day = self._get_active_team_last_movement_day()
+                if team_last_day is not None and team_last_day != self.current_day:
+                    self.current_day = team_last_day
+                    self._sync_current_food_for_view_day()
 
             if self._is_active_day_edit():
                 self.current_day = self._day_edit_context['day']
@@ -4510,9 +4594,21 @@ class PathfindingDemo:
                 self.current_day = self.active_team.max_day_reached
                 self._status_msg = f'{self._status_msg} [Auto-switched to Day {self.current_day}]'
             
-            # Rebuild day records AFTER all bonuses are applied and day is correct
-            if self._is_active_day_edit():
-                self._rebalance_all_teams_from_day(self._day_edit_context['day'])
+            # Rebuild day records AFTER all bonuses are applied and day is correct.
+            #
+            # Deliberately NOT calling _rebalance_all_teams_from_day() here on every
+            # intermediate click of a day-edit redraw: that function rebalances ALL
+            # 3 teams' segment-day assignments from scratch, and while a redraw is
+            # still in progress the active team's day total is incomplete, so
+            # rebalancing mid-redraw was reshuffling the OTHER two teams' segments
+            # (who aren't even being edited) based on a partial view of the day's
+            # cost - and each subsequent click reshuffled them again from a
+            # different partial state, so the final result didn't reliably converge
+            # back to the original arrangement even when the redrawn route was
+            # identical to the one that was deleted. _finalize_day_segment_edit_if_
+            # connected() below already calls _rebalance_all_teams_from_day() once,
+            # after the full redraw is complete and reconnected - that single call
+            # is sufficient and stable.
             self._rebuild_day_records()
 
             if self._is_active_day_edit():
@@ -4813,7 +4909,21 @@ class PathfindingDemo:
         C_ORIGIN  = '#22cc55'
         C_CURRENT = '#ff9900'
 
-        # Draw terrain hexes
+        # Draw terrain hexes.
+        #
+        # Perf note: this used to create a brand-new RegularPolygon + Affine2D
+        # transform + add_patch() call for each of the ~1450 non-empty hexes on
+        # *every* _draw() (i.e. every click/day-change/undo/etc), which profiled
+        # at ~450-500ms per redraw - the dominant source of UI lag. Hexes are
+        # now batched into a handful of PolyCollections (grouped by hatch
+        # pattern, since a collection can only carry one hatch for all of its
+        # members) and drawn with a couple of vectorized add_collection() calls
+        # instead of ~1450 individual add_patch() calls.
+        label_types = {'B1', 'B2', 'B3', 'Z1', 'Z2', 'Z3', 'X1', 'X2', 'X3'}
+        show_labels = self._show_bonus_labels
+        # group key -> lists of verts / facecolors / edgecolors / linewidths
+        hex_groups = {}
+        label_texts = []  # (cx_scaled, cy_scaled, terrain_name)
         for ir in range(ROWS):
             for ic in range(COLS):
                 t = _terrain(ir, ic)
@@ -4823,16 +4933,12 @@ class PathfindingDemo:
                 pos = (ir, ic)
 
                 # Determine if this is an origin for any team (only color as origin if team is still there)
-                is_origin = False
                 if pos == self.team1.origin and pos == self.team1.full_path[-1]:
                     fc = C_ORIGIN
-                    is_origin = True
                 elif self.team2 and pos == self.team2.origin and pos == self.team2.full_path[-1]:
                     fc = C_ORIGIN
-                    is_origin = True
                 elif self.team3 and pos == self.team3.origin and pos == self.team3.full_path[-1]:
                     fc = C_ORIGIN
-                    is_origin = True
                 else:
                     fc = t['face']
 
@@ -4841,27 +4947,35 @@ class PathfindingDemo:
                 hex_border_lw = 0.4 if is_black_edge else 0.9
                 hatch_raw = t.get('hatch', '') if t.get('hatch', '') else None
                 # Make hatch pattern denser by repeating each character
-                hatch = None
-                if hatch_raw:
-                    hatch = ''.join(ch * 3 for ch in hatch_raw)
-                patch = RegularPolygon(
-                    (cx, cy), numVertices=6, radius=HEX_SIZE * 0.97,
-                    orientation=np.radians(30),
-                    facecolor=fc, edgecolor=ec, linewidth=hex_border_lw, zorder=1, hatch=hatch)
-                patch.set_transform(
-                    Affine2D().scale(X_SCALE, Y_SCALE) + self.ax.transData)
-                self.ax.add_patch(patch)
-                
-                # Draw names for specific terrain types: B1, B2, B3, Z1, Z2, Z3, X1, X2, X3
-                if self._show_bonus_labels:
-                    label_types = {'B1', 'B2', 'B3', 'Z1', 'Z2', 'Z3', 'X1', 'X2', 'X3'}
+                hatch = ''.join(ch * 3 for ch in hatch_raw) if hatch_raw else None
+
+                group = hex_groups.get(hatch)
+                if group is None:
+                    group = {'verts': [], 'fc': [], 'ec': [], 'lw': []}
+                    hex_groups[hatch] = group
+                group['verts'].append(_HEX_VERT_OFFSETS + (cx, cy))
+                group['fc'].append(fc)
+                group['ec'].append(ec)
+                group['lw'].append(hex_border_lw)
+
+                # Names for specific terrain types: B1, B2, B3, Z1, Z2, Z3, X1, X2, X3
+                if show_labels:
                     terrain_name = t.get('name', '')
                     if terrain_name and RAW_MAP[ir][ic] in label_types:
-                        cx_scaled = cx * X_SCALE
-                        cy_scaled = cy * Y_SCALE
-                        self.ax.text(cx_scaled, cy_scaled, terrain_name,
-                                    ha='center', va='center', fontsize=7, fontweight='bold',
-                                    zorder=5, color='#000000')
+                        label_texts.append((cx * X_SCALE, cy * Y_SCALE, terrain_name))
+
+        hex_transform = Affine2D().scale(X_SCALE, Y_SCALE) + self.ax.transData
+        for hatch, group in hex_groups.items():
+            coll = PolyCollection(
+                group['verts'], facecolors=group['fc'], edgecolors=group['ec'],
+                linewidths=group['lw'], zorder=1, hatch=hatch)
+            coll.set_transform(hex_transform)
+            self.ax.add_collection(coll)
+
+        for cx_scaled, cy_scaled, terrain_name in label_texts:
+            self.ax.text(cx_scaled, cy_scaled, terrain_name,
+                        ha='center', va='center', fontsize=7, fontweight='bold',
+                        zorder=5, color='#000000')
 
         # Draw paths for each team
         line_width_factor = 1.4  # 2x wider than previous path width setting

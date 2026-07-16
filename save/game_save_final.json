@@ -3,7 +3,7 @@
   "current_food": 14,
   "total_food": 149186,
   "total_reward": 67101,
-  "fly_skill_limit": 1,
+  "fly_skill_limit": 0,
   "team1": {
     "full_path": [
       [
@@ -4788,7 +4788,7 @@
     ],
     "_seg_fly_skill_deltas": [
       0,
-      0,
+      -1,
       0,
       0,
       0,

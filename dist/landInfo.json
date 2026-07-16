@@ -80,13 +80,18 @@
     "award": 30
   },
    "T": {
-	"name": "Tent",  
+	"name": "Tent",
 	"label": "Tent",
     "edge": "k",
     "face": "#92D050",
 	"hatch": "x",
     "food": -300,
-	"degrade": [11,21,36,51],
+	"degrade": [
+		{"day": 11, "food": -250},
+		{"day": 21, "food": -200},
+		{"day": 36, "food": -150},
+		{"day": 51, "food": -100}
+	],
 	"step": -1,
     "award": 0
   },

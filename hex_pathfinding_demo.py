@@ -102,6 +102,20 @@ _HEX_VERT_OFFSETS = np.column_stack((
     np.cos(_HEX_VERT_ANGLES), np.sin(_HEX_VERT_ANGLES),
 )) * (HEX_SIZE * 0.97)
 
+# Real-game screenshot for the "切换地图" view. S24_map_rectified.png is a
+# pre-processed (offline, not at app runtime - see tools/rectify_map_image.py)
+# version of the raw S24_map.png screenshot: the script self-calibrates a
+# single rigid affine mapping (ir, ic) hex coords <-> source pixel coords
+# (connected-component blob detection, anchored on the unique 'ST' start
+# hex, refined by iterative least-squares), then places the WHOLE original
+# screenshot (only downsampled for size, never cropped or masked) using that
+# affine. The resulting placement extent (in this module's data-coordinate
+# space) is saved alongside the PNG as a JSON sidecar since - unlike a
+# per-hex warp resampled onto the exact grid - a single affine's image
+# bounds generally don't equal the full hex-grid bounds.
+_MAP_IMAGE_FILENAME = 'S24_map_rectified.png'
+_MAP_IMAGE_EXTENT_FILENAME = 'S24_map_rectified_extent.json'
+
 # Marching game start: game coords (row=53, col=8) → internal 0-based (ir, ic)
 # NOTE: the raw game-start cell may be empty terrain (a boundary marker);
 # we resolve the nearest passable hex at runtime in _find_passable_near().
@@ -116,12 +130,19 @@ def _terrain(ir, ic):
 
 
 def _get_terrain_food(terrain_data, current_day):
-    """Get the effective food value for terrain, accounting for degrade attribute (e.g., Tent).
-    
-    For terrains with a 'degrade' attribute (like Tent), the food value improves (becomes less negative)
-    each time a degrade day is reached. Each degrade transition increases food by 50.
-    
-    Example: Tent with food=-300 and degrade=[11,21,36,51]:
+    """Get the effective food value for terrain, accounting for a data-driven
+    'degrade' schedule (e.g. Tent) defined entirely in landInfo.json - both the
+    day thresholds AND the resulting food value at each stage live in the JSON,
+    nothing about the schedule is hardcoded here.
+
+    'degrade' is a list of {"day": N, "food": V} entries, each meaning "starting
+    Day N, this terrain's food value becomes V". The terrain's base 'food' value
+    applies before the first entry's day. If current_day matches multiple
+    entries, the one with the largest 'day' <= current_day wins (list order in
+    the JSON doesn't matter).
+
+    Example: Tent with food=-300 and degrade=[{day:11,food:-250}, {day:21,food:-200},
+    {day:36,food:-150}, {day:51,food:-100}]:
       Days 1-10: -300
       Days 11-20: -250
       Days 21-35: -200
@@ -129,16 +150,16 @@ def _get_terrain_food(terrain_data, current_day):
       Days 51+: -100
     """
     base_food = terrain_data.get('food', 0)
-    degrade_days = terrain_data.get('degrade', [])
-    
-    if not degrade_days:
+    schedule = terrain_data.get('degrade', [])
+
+    if not schedule:
         return base_food
-    
-    # Count how many degrade days have passed
-    degrade_count = sum(1 for day in degrade_days if current_day >= day)
-    
-    # Each degrade transition improves food by 50
-    return base_food + (50 * degrade_count)
+
+    applicable = [entry for entry in schedule if current_day >= entry['day']]
+    if not applicable:
+        return base_food
+
+    return max(applicable, key=lambda entry: entry['day'])['food']
 
 
 def _apply_b_discount(challenge_food, team):
@@ -454,6 +475,9 @@ class PathfindingDemo:
         self._calendar_day1 = date(2026, 6, 12)  # Day 1 baseline date
         self._data_window_open = False
         self._global_stat_window_open = False
+        self._map_view_mode = 'hex'  # 'hex' or 'image' (real-game screenshot)
+        self._map_image_array = None  # lazily loaded/cached on first switch to image mode
+        self._map_image_extent = None
         self._segment_edit_mode = False
         self._segment_edit_targets = []
         self._segment_edit_selected_days = set()
@@ -540,6 +564,12 @@ class PathfindingDemo:
         self._btn_next_day = Button(bax_next_day, '后一天(E)', color='#ffeb99')
         self._btn_next_day.label.set_fontsize(14)
         self._btn_next_day.on_clicked(lambda _evt: self._advance_day())
+
+        # Toggle between the drawn hex grid and the real-game map screenshot
+        bax_map_view = self.fig.add_axes([0.22, 0.02, 0.09, 0.035])
+        self._btn_map_view = Button(bax_map_view, '切换地图', color='#c9b3ff')
+        self._btn_map_view.label.set_fontsize(12)
+        self._btn_map_view.on_clicked(lambda _evt: self._toggle_map_view())
 
         # Day/date display on right side, above the food/reward table
         self._day_number_text = self.fig.text(0.95, 0.86, self._format_day_with_date(1),
@@ -725,7 +755,18 @@ class PathfindingDemo:
             self._hover_timer.cancel()
             self._hover_timer = None
         if self._hover_path_line is not None:
-            self._hover_path_line.remove()
+            # The artist can already be detached (e.g. a _draw() -> ax.clear()
+            # happened while a preview was showing) - remove() on an already-
+            # detached artist raises NotImplementedError. This runs at the top
+            # of every click/mouse-move handler, so letting that exception
+            # escape here would leave self._hover_path_line non-None forever,
+            # permanently breaking all map interaction from then on (matplotlib
+            # swallows exceptions raised inside callbacks, so it fails silently
+            # instead of crashing - see _draw()'s comment for the full story).
+            try:
+                self._hover_path_line.remove()
+            except NotImplementedError:
+                pass
             self._hover_path_line = None
             self.fig.canvas.draw_idle()
         self._hover_hex = None
@@ -2916,6 +2957,83 @@ class PathfindingDemo:
         self._update_show_future_button_state()
         self._draw()
 
+    def _resolve_asset_path(self, filename):
+        """Find `filename` next to the running script/exe (same search-dir logic
+        used for the Excel export template, so it works both frozen and unfrozen).
+        Returns the path if found, else None.
+        """
+        import os
+        import sys
+
+        if getattr(sys, 'frozen', False):
+            base_dir = os.path.dirname(os.path.abspath(sys.executable))
+        else:
+            base_dir = os.path.dirname(os.path.abspath(__file__))
+
+        search_dirs = [base_dir]
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        if script_dir not in search_dirs:
+            search_dirs.append(script_dir)
+        meipass_dir = getattr(sys, '_MEIPASS', None)
+        if meipass_dir and meipass_dir not in search_dirs:
+            search_dirs.append(meipass_dir)
+
+        for d in search_dirs:
+            cand = os.path.join(d, filename)
+            if os.path.exists(cand):
+                return cand
+        return None
+
+    def _load_map_image(self):
+        """Load and cache the pre-rectified real-game map screenshot plus its
+        placement extent. See the _MAP_IMAGE_FILENAME comment above for how
+        it was rectified - it's a single whole-image affine placement (not a
+        per-hex warp), so its extent generally isn't the full hex-grid
+        bounds and must be read from the JSON sidecar the offline script
+        produced, not recomputed here."""
+        if self._map_image_array is not None:
+            return True
+
+        path = self._resolve_asset_path(_MAP_IMAGE_FILENAME)
+        if path is None:
+            self._status_msg = f'Map image not found: {_MAP_IMAGE_FILENAME} (place it next to the app).'
+            return False
+
+        extent_path = self._resolve_asset_path(_MAP_IMAGE_EXTENT_FILENAME)
+        if extent_path is None:
+            self._status_msg = f'Map image extent not found: {_MAP_IMAGE_EXTENT_FILENAME} (place it next to the app).'
+            return False
+
+        try:
+            from PIL import Image as _PILImage
+            img = np.asarray(_PILImage.open(path))
+            with open(extent_path, 'r', encoding='utf-8') as f:
+                extent = json.load(f)['extent']
+        except Exception as e:
+            self._status_msg = f'Failed to load map image: {e}'
+            return False
+
+        self._map_image_array = img
+        self._map_image_extent = extent
+        return True
+
+    def _toggle_map_view(self):
+        """Switch the main map between the drawn hex grid and the real-game
+        screenshot (S24_map_rectified.png), which is pre-aligned so team
+        paths/markers still line up correctly on top of the photo.
+        """
+        if self._map_view_mode == 'hex':
+            if not self._load_map_image():
+                # _load_map_image() already set an explanatory _status_msg.
+                self._draw()
+                return
+            self._map_view_mode = 'image'
+            self._status_msg = '已切换到实景地图'
+        else:
+            self._map_view_mode = 'hex'
+            self._status_msg = '已切换到六边形地图'
+        self._draw()
+
     def _reset_path(self):
         self._clear_hover_preview()  # Clear preview on reset
         
@@ -4046,19 +4164,23 @@ class PathfindingDemo:
                 self._draw()
                 return
 
-            # A normal path click continues the active team's own timeline: snap the
-            # viewed day to that team's last action day (not whatever day happens to
-            # be globally displayed) before checking resources. Food is one pool
-            # shared by all 3 teams and accrues day by day, so a team that's been
-            # idle while another team kept spending on later days would otherwise
-            # look "out of food" for no reason visible to the user - it should
-            # instead keep acting from the day it actually left off.
-            if not self._is_active_day_edit():
-                team_last_day = self._get_active_team_last_movement_day()
-                if team_last_day is not None and team_last_day != self.current_day:
-                    self.current_day = team_last_day
-                    self._sync_current_food_for_view_day()
-
+            # A normal path click always attributes the new segment to whatever day
+            # is currently being viewed (self.current_day) - see the "current viewing
+            # day, not max_day_reached" comments below where seg_day is actually set.
+            # An earlier version of this code force-snapped the viewed day back to
+            # the active team's last action day here, meant to help a team that had
+            # gone idle while other teams advanced the globally-displayed day. But it
+            # fired on *every* click regardless of why current_day differed from the
+            # team's last action day, so it also silently overrode a deliberate,
+            # explicit day change - e.g. clicking to continue banked steps on a later
+            # day (steps accrue day by day up to a cap, so leaving a day's steps
+            # partially unused to act on a later day is a legitimate way to play) got
+            # silently re-attributed back to the earlier day instead, and once that
+            # earlier day's bank was exhausted this way the team could no longer act
+            # at all even though the later day still had steps shown as available.
+            # self.current_day is only ever changed by explicit navigation elsewhere
+            # (Next/Prev Day, jump-to-day, double-click team button, etc.), so it can
+            # be trusted here without a defensive override.
             if self._is_active_day_edit():
                 self.current_day = self._day_edit_context['day']
 
@@ -4871,6 +4993,24 @@ class PathfindingDemo:
         
         self.ax.clear()
 
+        # ax.clear() just destroyed every artist that was in the axes, including
+        # any live hover-preview line - but it doesn't know about (and can't null
+        # out) our own self._hover_path_line reference to that now-dead artist.
+        # _clear_hover_preview() calling .remove() on it afterward raises
+        # NotImplementedError ("cannot remove artist") since the artist is already
+        # detached; that happens at the very top of _on_click/_on_motion, before
+        # self._hover_path_line is set back to None, and matplotlib's callback
+        # dispatcher swallows the exception (prints a traceback, doesn't propagate)
+        # - so it never reaches None, and *every* future click/mouse-move hits the
+        # same exception again, permanently freezing all map interaction until the
+        # app is restarted. Drop the stale reference here, right where it's
+        # invalidated, instead of relying on _clear_hover_preview() to catch up.
+        self._hover_path_line = None
+        if self._hover_timer is not None:
+            self._hover_timer.cancel()
+            self._hover_timer = None
+        self._hover_hex = None
+
         # Pre-compute fitted limits early; after ax.clear() temporary limits are (0,1),
         # which can make width scaling explode if used directly.
         fit_xlim, fit_ylim = self._compute_fit_limits_for_axes()
@@ -4921,56 +5061,84 @@ class PathfindingDemo:
         # instead of ~1450 individual add_patch() calls.
         label_types = {'B1', 'B2', 'B3', 'Z1', 'Z2', 'Z3', 'X1', 'X2', 'X3'}
         show_labels = self._show_bonus_labels
-        # group key -> lists of verts / facecolors / edgecolors / linewidths
-        hex_groups = {}
         label_texts = []  # (cx_scaled, cy_scaled, terrain_name)
-        for ir in range(ROWS):
-            for ic in range(COLS):
-                t = _terrain(ir, ic)
-                if t['name'] == 'empty':
-                    continue
-                cx, cy = _center(ir, ic)
-                pos = (ir, ic)
 
-                # Determine if this is an origin for any team (only color as origin if team is still there)
-                if pos == self.team1.origin and pos == self.team1.full_path[-1]:
-                    fc = C_ORIGIN
-                elif self.team2 and pos == self.team2.origin and pos == self.team2.full_path[-1]:
-                    fc = C_ORIGIN
-                elif self.team3 and pos == self.team3.origin and pos == self.team3.full_path[-1]:
-                    fc = C_ORIGIN
-                else:
-                    fc = t['face']
+        if self._map_view_mode == 'image' and self._map_image_array is not None:
+            # Real-game screenshot background, pre-rectified (see
+            # tools/rectify_map_image.py and the _MAP_IMAGE_FILENAME comment
+            # above) so that hex (ir, ic) positions line up with this same
+            # data-coordinate system that team paths/markers already use -
+            # nothing below this block needs to know which view mode is active.
+            self.ax.imshow(
+                self._map_image_array, extent=self._map_image_extent,
+                zorder=0, aspect='auto', interpolation='bilinear',
+            )
+            if show_labels:
+                for ir in range(ROWS):
+                    for ic in range(COLS):
+                        t = _terrain(ir, ic)
+                        terrain_name = t.get('name', '')
+                        if terrain_name and RAW_MAP[ir][ic] in label_types:
+                            cx, cy = _center(ir, ic)
+                            label_texts.append((cx * X_SCALE, cy * Y_SCALE, terrain_name))
+        else:
+            # Perf note: this used to create a brand-new RegularPolygon + Affine2D
+            # transform + add_patch() call for each of the ~1450 non-empty hexes on
+            # *every* _draw() (i.e. every click/day-change/undo/etc), which profiled
+            # at ~450-500ms per redraw - the dominant source of UI lag. Hexes are
+            # now batched into a handful of PolyCollections (grouped by hatch
+            # pattern, since a collection can only carry one hatch for all of its
+            # members) and drawn with a couple of vectorized add_collection() calls
+            # instead of ~1450 individual add_patch() calls.
+            # group key -> lists of verts / facecolors / edgecolors / linewidths
+            hex_groups = {}
+            for ir in range(ROWS):
+                for ic in range(COLS):
+                    t = _terrain(ir, ic)
+                    if t['name'] == 'empty':
+                        continue
+                    cx, cy = _center(ir, ic)
+                    pos = (ir, ic)
 
-                ec = t['edge'] if t['edge'] not in ('none', '') else '#777777'
-                is_black_edge = str(ec).lower() in ('k', 'black', '#000', '#000000')
-                hex_border_lw = 0.4 if is_black_edge else 0.9
-                hatch_raw = t.get('hatch', '') if t.get('hatch', '') else None
-                # Make hatch pattern denser by repeating each character
-                hatch = ''.join(ch * 3 for ch in hatch_raw) if hatch_raw else None
+                    # Determine if this is an origin for any team (only color as origin if team is still there)
+                    if pos == self.team1.origin and pos == self.team1.full_path[-1]:
+                        fc = C_ORIGIN
+                    elif self.team2 and pos == self.team2.origin and pos == self.team2.full_path[-1]:
+                        fc = C_ORIGIN
+                    elif self.team3 and pos == self.team3.origin and pos == self.team3.full_path[-1]:
+                        fc = C_ORIGIN
+                    else:
+                        fc = t['face']
 
-                group = hex_groups.get(hatch)
-                if group is None:
-                    group = {'verts': [], 'fc': [], 'ec': [], 'lw': []}
-                    hex_groups[hatch] = group
-                group['verts'].append(_HEX_VERT_OFFSETS + (cx, cy))
-                group['fc'].append(fc)
-                group['ec'].append(ec)
-                group['lw'].append(hex_border_lw)
+                    ec = t['edge'] if t['edge'] not in ('none', '') else '#777777'
+                    is_black_edge = str(ec).lower() in ('k', 'black', '#000', '#000000')
+                    hex_border_lw = 0.4 if is_black_edge else 0.9
+                    hatch_raw = t.get('hatch', '') if t.get('hatch', '') else None
+                    # Make hatch pattern denser by repeating each character
+                    hatch = ''.join(ch * 3 for ch in hatch_raw) if hatch_raw else None
 
-                # Names for specific terrain types: B1, B2, B3, Z1, Z2, Z3, X1, X2, X3
-                if show_labels:
-                    terrain_name = t.get('name', '')
-                    if terrain_name and RAW_MAP[ir][ic] in label_types:
-                        label_texts.append((cx * X_SCALE, cy * Y_SCALE, terrain_name))
+                    group = hex_groups.get(hatch)
+                    if group is None:
+                        group = {'verts': [], 'fc': [], 'ec': [], 'lw': []}
+                        hex_groups[hatch] = group
+                    group['verts'].append(_HEX_VERT_OFFSETS + (cx, cy))
+                    group['fc'].append(fc)
+                    group['ec'].append(ec)
+                    group['lw'].append(hex_border_lw)
 
-        hex_transform = Affine2D().scale(X_SCALE, Y_SCALE) + self.ax.transData
-        for hatch, group in hex_groups.items():
-            coll = PolyCollection(
-                group['verts'], facecolors=group['fc'], edgecolors=group['ec'],
-                linewidths=group['lw'], zorder=1, hatch=hatch)
-            coll.set_transform(hex_transform)
-            self.ax.add_collection(coll)
+                    # Names for specific terrain types: B1, B2, B3, Z1, Z2, Z3, X1, X2, X3
+                    if show_labels:
+                        terrain_name = t.get('name', '')
+                        if terrain_name and RAW_MAP[ir][ic] in label_types:
+                            label_texts.append((cx * X_SCALE, cy * Y_SCALE, terrain_name))
+
+            hex_transform = Affine2D().scale(X_SCALE, Y_SCALE) + self.ax.transData
+            for hatch, group in hex_groups.items():
+                coll = PolyCollection(
+                    group['verts'], facecolors=group['fc'], edgecolors=group['ec'],
+                    linewidths=group['lw'], zorder=1, hatch=hatch)
+                coll.set_transform(hex_transform)
+                self.ax.add_collection(coll)
 
         for cx_scaled, cy_scaled, terrain_name in label_texts:
             self.ax.text(cx_scaled, cy_scaled, terrain_name,

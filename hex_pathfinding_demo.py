@@ -76,13 +76,15 @@ def _load_csv(path):
         return [row for row in csv.reader(f)]
 
 
-RAW_MAP = _load_csv('map_S24.csv')
+with open('landInfo.json') as f:
+    _TERRAIN_DB = json.load(f)
+
+_MAP_FILES = _TERRAIN_DB['map_files']
+
+RAW_MAP = _load_csv(_MAP_FILES['csv'])
 RAW_MAP.reverse()          # row 0 → bottom of the board
 ROWS = len(RAW_MAP)
 COLS = len(RAW_MAP[0])
-
-with open('landInfo.json') as f:
-    _TERRAIN_DB = json.load(f)
 
 HEX_SIZE = 5
 # Display-only angled-view transform: stretch x wider, compress y
@@ -113,8 +115,8 @@ _HEX_VERT_OFFSETS = np.column_stack((
 # space) is saved alongside the PNG as a JSON sidecar since - unlike a
 # per-hex warp resampled onto the exact grid - a single affine's image
 # bounds generally don't equal the full hex-grid bounds.
-_MAP_IMAGE_FILENAME = 'S24_map_rectified.png'
-_MAP_IMAGE_EXTENT_FILENAME = 'S24_map_rectified_extent.json'
+_MAP_IMAGE_FILENAME = _MAP_FILES['image']
+_MAP_IMAGE_EXTENT_FILENAME = _MAP_FILES['image_extent']
 
 # Marching game start: game coords (row=53, col=8) → internal 0-based (ir, ic)
 # NOTE: the raw game-start cell may be empty terrain (a boundary marker);
@@ -5025,7 +5027,7 @@ class PathfindingDemo:
                 self.ax.text(
                     x,
                     y,
-                    '157 He Culture',
+                    '亡夜迫邪',
                     transform=self.ax.transAxes,
                     ha='center',
                     va='center',

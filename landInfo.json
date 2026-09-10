@@ -375,12 +375,17 @@
     "award": 0
   },
   "default": {
-	"name": "def",  
+	"name": "def",
 	"label": "",
     "edge": "none",
     "face": "none",
     "food": 0,
 	"step": 0,
     "award": 0
+  },
+  "map_files": {
+    "csv": "map_S24.csv",
+    "image": "S24_map_rectified_transparent.png",
+    "image_extent": "S24_map_rectified_extent.json"
   }
 }

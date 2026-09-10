@@ -1,0 +1,413 @@
+{
+  "0": {
+	"name": "empty",
+	"label": "",
+    "edge": "none",
+    "face": "none",
+	"hatch": "",
+    "food": 0,
+	"step": 0,
+    "award": 0
+  },
+  "1": {
+	"name": "land_1",
+	"label": "",
+    "edge": "k",
+    "face": "#D0CECE",
+	"hatch": "",
+    "food": 100,
+	"step": 1,
+    "award": 35
+  },
+  "2": {
+	"name": "land_2",
+	"label": "",
+    "edge": "k",
+    "face": "#E2EFDA",
+	"hatch": "",
+    "food": 110,
+	"step": 1,
+    "award": 40
+  },
+  "3": {
+	"name": "land_3",
+	"label": "",
+    "edge": "k",
+    "face": "#DDEBF7",
+	"hatch": "",
+    "food": 120,
+	"step": 1,
+    "award": 45
+  },
+  "4": {
+	"name": "land_4",
+	"label": "",
+    "edge": "k",
+    "face": "#8EA9DB",
+	"hatch": "",
+    "food": 130,
+	"step": 1,
+    "award": 50
+  },
+  "5": {
+	"name": "land_5",
+	"label": "",
+    "edge": "k",
+    "face": "#CC66FF",
+	"hatch": "",
+    "food": 140,
+	"step": 1,
+    "award": 55
+  },
+  "6": {
+	"name": "land_6",  
+	"label": "",
+    "edge": "k",
+    "face": "#F4B084",
+	"hatch": "",
+    "food": 150,
+	"step": 1,
+    "award": 60
+  },
+  "M": {
+	"name": "Merchant",  
+	"label": "Merc",
+    "edge": "k",
+    "face": "#305496",
+	"hatch": "+",
+    "food": 0,
+	"step": 1,
+    "award": 30
+  },
+   "T": {
+	"name": "Tent",
+	"label": "Tent",
+    "edge": "k",
+    "face": "#92D050",
+	"hatch": "x",
+    "food": -300,
+	"degrade": [
+		{"day": 15, "food": -250},
+		{"day": 25, "food": -200},
+		{"day": 43, "food": -150},
+		{"day": 64, "food": -100}
+	],
+	"step": -1,
+    "award": 0
+  },
+  "g": {
+	"name": "smallGua",  
+	"label": "smallGua",
+    "edge": "k",
+    "face": "#FFFF00",
+	"hatch": "",
+    "food": 120,
+	"step": 1,
+    "award": 45
+  },
+  "G": {
+	"name": "bigGua",  
+	"label": "bigGua",
+    "edge": "r",
+    "face": "#FFFF00",
+	"hatch": "",
+    "food": 200,
+	"step": 1,
+    "award": 300
+  },
+  "b": {
+	"name": "midBoss",  
+	"label": "midBoss",
+    "edge": "k",
+    "face": "#FFCCFF",
+	"hatch": "",
+    "food": 200,
+	"step": 1,
+    "award": 500
+  },
+  "B": {
+	"name": "bigBoss",  
+	"label": "bigBoss",
+    "edge": "k",
+    "face": "#99FFCC",
+	"hatch": "",
+    "food": 200,
+	"step": 1,
+    "award": 1000
+  },
+  "L": {
+	"name": "liLian",  
+	"label": "liLian",
+    "edge": "k",
+    "face": "#DDEBF7",
+	"hatch": ".",
+    "food": 0,
+	"step": 0,
+    "award": 520
+  },
+  "X1": {
+	"name": "xunji_1",
+	"label": "迅1",
+    "edge": "r",
+    "face": "#D0CECE",
+	"hatch": "",
+    "food": 100,
+	"step": 1,
+    "award": 35,
+    "effective_steps": 5,
+    "has_no_step_cost": true
+  },
+  "B1": {
+	"name": "bingliang_1",
+	"label": "粮1",
+    "edge": "r",
+    "face": "#D0CECE",
+	"hatch": "",
+    "food": 100,
+	"step": 1,
+    "award": 35,
+    "food_discount_rate": 0.4,
+    "effective_steps": 5
+  },
+  "Z1": {
+	"name": "zhanxun_1",
+	"label": "勋1",
+    "edge": "r",
+    "face": "#D0CECE",
+	"hatch": "",
+    "food": 100,
+	"step": 1,
+    "award": 35,
+    "reward_bonus_rate": 1.4,
+    "effective_steps": 5
+  },
+  "X2": {
+	"name": "xunji_2",
+	"label": "迅2",
+    "edge": "r",
+    "face": "#E2EFDA",
+	"hatch": "",
+    "food": 100,
+	"step": 1,
+    "award": 40,
+    "effective_steps": 8,
+    "has_no_step_cost": true
+  },
+  "B2": {
+	"name": "bingliang_2",
+	"label": "粮2",
+    "edge": "r",
+    "face": "#E2EFDA",
+	"hatch": "",
+    "food": 100,
+	"step": 1,
+    "award": 40,
+    "food_discount_rate": 0.4,
+    "effective_steps": 8
+  },
+  "Z2": {
+	"name": "zhanxun_2",
+	"label": "勋2",
+    "edge": "r",
+    "face": "#E2EFDA",
+	"hatch": "",
+    "food": 100,
+	"step": 1,
+    "award": 40,
+    "reward_bonus_rate": 1.4,
+    "effective_steps": 8
+  },
+  "X3": {
+	"name": "xunji_3",
+	"label": "迅3",
+    "edge": "r",
+    "face": "#DDEBF7",
+	"hatch": "",
+    "food": 100,
+	"step": 1,
+    "award": 45,
+    "effective_steps": 10,
+    "has_no_step_cost": true
+  },
+  "B3": {
+	"name": "bingliang_3",
+	"label": "粮3",
+    "edge": "r",
+    "face": "#DDEBF7",
+	"hatch": "",
+    "food": 100,
+	"step": 1,
+    "award": 45,
+    "food_discount_rate": 0.4,
+    "effective_steps": 10
+  },
+  "Z3": {
+	"name": "zhanxun_3",
+	"label": "勋3",
+    "edge": "r",
+    "face": "#DDEBF7",
+	"hatch": "",
+    "food": 100,
+	"step": 1,
+    "award": 45,
+    "reward_bonus_rate": 1.4,
+    "effective_steps": 10
+  },
+  "T2": {
+	"name": "tower_2",
+	"label": "tower",
+    "edge": "r",
+    "face": "#E2EFDA",
+	"hatch": "",
+    "food": 100,
+	"step": 1,
+    "award": 40
+  },
+  "T3": {
+	"name": "tower_3",
+	"label": "tower",
+    "edge": "r",
+    "face": "#DDEBF7",
+	"hatch": "",
+    "food": 100,
+	"step": 1,
+    "award": 45
+  },
+  "T4": {
+	"name": "tower_4",
+	"label": "tower",
+    "edge": "r",
+    "face": "#8EA9DB",
+	"hatch": "",
+    "food": 100,
+	"step": 1,
+    "award": 50
+  },
+  "T5": {
+	"name": "tower_5",
+	"label": "tower",
+    "edge": "r",
+    "face": "#CC66FF",
+	"hatch": "",
+    "food": 100,
+	"step": 1,
+    "award": 55
+  },
+  "T6": {
+	"name": "tower_6",  
+	"label": "tower",
+    "edge": "r",
+    "face": "#F4B084",
+	"hatch": "",
+    "food": 100,
+	"step": 1,
+    "award": 60
+  },
+  "P1": {
+	"name": "port",  
+	"label": "port_1",
+    "edge": "g",
+    "face": "#817E00",
+	"hatch": "",
+    "food": 0,
+	"step": 0,
+    "award": 0
+  },
+  "P2": {
+	"name": "port",  
+	"label": "port_2",
+    "edge": "g",
+    "face": "#817E00",
+	"hatch": "",
+    "food": 0,
+	"step": 0,
+    "award": 0
+  },
+  "P3": {
+	"name": "port",  
+	"label": "port_2",
+    "edge": "g",
+    "face": "#817E00",
+	"hatch": "",
+    "food": 0,
+	"step": 0,
+    "award": 0
+  },
+  "P4": {
+	"name": "port",  
+	"label": "port_2",
+    "edge": "g",
+    "face": "#817E00",
+	"hatch": "",
+    "food": 0,
+	"step": 0,
+    "award": 0
+  },
+  "P5": {
+	"name": "port",  
+	"label": "port_2",
+    "edge": "g",
+    "face": "#817E00",
+	"hatch": "",
+    "food": 0,
+	"step": 0,
+    "award": 0
+  },
+  "P6": {
+	"name": "port",  
+	"label": "port_2",
+    "edge": "g",
+    "face": "#817E00",
+	"hatch": "",
+    "food": 0,
+	"step": 0,
+    "award": 0
+  },
+  "P7": {
+	"name": "port",  
+	"label": "port_2",
+    "edge": "g",
+    "face": "#817E00",
+	"hatch": "",
+    "food": 0,
+	"step": 0,
+    "award": 0
+  },
+  "P8": {
+	"name": "port",  
+	"label": "port_2",
+    "edge": "g",
+    "face": "#817E00",
+	"hatch": "",
+    "food": 0,
+	"step": 0,
+    "award": 0
+  },
+  "ST": {
+	"name": "start",  
+	"label": "start",
+    "edge": "none",
+    "face": "none",
+    "food": 0,
+	"step": 0,
+    "award": 0
+  },
+  "default": {
+	"name": "def",
+	"label": "",
+    "edge": "none",
+    "face": "none",
+    "food": 0,
+	"step": 0,
+    "award": 0
+  },
+  "map_files": {
+    "csv": "map_S25.csv",
+    "image": "S25_map_rectified_transparent.png",
+    "image_extent": "S25_map_rectified_extent.json"
+  },
+  "season": {
+    "start_date": "2026-09-11",
+    "duration_days": 97
+  }
+}

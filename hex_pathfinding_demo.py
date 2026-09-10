@@ -80,6 +80,9 @@ with open('landInfo.json') as f:
     _TERRAIN_DB = json.load(f)
 
 _MAP_FILES = _TERRAIN_DB['map_files']
+_SEASON = _TERRAIN_DB.get('season', {})
+TOTAL_DAYS = _SEASON.get('duration_days', 90)
+CALENDAR_DAY1 = date(*(int(p) for p in _SEASON.get('start_date', '2026-06-12').split('-')))
 
 RAW_MAP = _load_csv(_MAP_FILES['csv'])
 RAW_MAP.reverse()          # row 0 → bottom of the board
@@ -474,7 +477,7 @@ class PathfindingDemo:
         self.current_food = 6800  # Day 1 starts with 6800 food, subsequent days +1600
         self.total_food = 0     # Total food consumed across all teams
         self.total_reward = 0   # Total reward across all teams
-        self._calendar_day1 = date(2026, 6, 12)  # Day 1 baseline date
+        self._calendar_day1 = CALENDAR_DAY1  # Day 1 baseline date (from landInfo.json)
         self._data_window_open = False
         self._global_stat_window_open = False
         self._map_view_mode = 'hex'  # 'hex' or 'image' (real-game screenshot)
@@ -489,7 +492,7 @@ class PathfindingDemo:
         self._day_edit_context = None
         self._show_future_paths = True
         
-        # Initialize day records for days 1-90 with proper remaining steps
+        # Initialize day records for days 1-TOTAL_DAYS with proper remaining steps
         self._init_day_records()
         
         # Team colors
@@ -1497,7 +1500,7 @@ class PathfindingDemo:
                     day_used += team._seg_steps[seg_idx]
             step_bank -= day_used
 
-        for day in range(earliest, 91):
+        for day in range(earliest, TOTAL_DAYS + 1):
             step_bank = min(step_bank + 6, 18)
             day_used = 0
             for seg_idx, seg_day in enumerate(team._seg_days):
@@ -1513,7 +1516,7 @@ class PathfindingDemo:
         food_remaining = 6800
         teams = [t for t in (self.team1, self.team2, self.team3) if t is not None]
 
-        for day in range(1, 91):
+        for day in range(1, TOTAL_DAYS + 1):
             used_today = 0
             for team in teams:
                 for seg_food, seg_day in zip(team._seg_foods, team._seg_days):
@@ -1524,7 +1527,7 @@ class PathfindingDemo:
             if food_remaining < 0:
                 return True
 
-            if day < 90:
+            if day < TOTAL_DAYS:
                 food_remaining += 1600
 
         return False
@@ -2623,9 +2626,9 @@ class PathfindingDemo:
 
     def _advance_day(self):
         """Manually advance to next day (just changes viewing index, doesn't modify team state)."""
-        if self.current_day >= 90:
-            self.current_day = 90
-            self._status_msg = 'Already at Day 90. Cannot advance further.'
+        if self.current_day >= TOTAL_DAYS:
+            self.current_day = TOTAL_DAYS
+            self._status_msg = f'Already at Day {TOTAL_DAYS}. Cannot advance further.'
             self._draw()
             return
 
@@ -2691,7 +2694,7 @@ class PathfindingDemo:
         except Exception:
             return
 
-        day = max(1, min(90, day))
+        day = max(1, min(TOTAL_DAYS, day))
         self.current_day = day
         self._sync_current_food_for_view_day()
 
@@ -2712,7 +2715,7 @@ class PathfindingDemo:
         self._draw()
 
     def _show_day_picker(self):
-        """Show a list picker for Day 1..90 and jump to selected day."""
+        """Show a list picker for Day 1..TOTAL_DAYS and jump to selected day."""
         try:
             import tkinter as tk
 
@@ -2731,7 +2734,7 @@ class PathfindingDemo:
             scrollbar = tk.Scrollbar(frame, orient='vertical', command=listbox.yview)
             listbox.configure(yscrollcommand=scrollbar.set)
 
-            for d in range(1, 91):
+            for d in range(1, TOTAL_DAYS + 1):
                 listbox.insert('end', self._format_day_with_date(d))
 
             listbox.pack(side='left', fill='both', expand=True)
@@ -3058,7 +3061,7 @@ class PathfindingDemo:
         self.total_food = 0
         self.total_reward = 0
         
-        # Re-initialize day_records for days 1-90
+        # Re-initialize day_records for days 1-TOTAL_DAYS
         self._init_day_records()
         
         # Stop any flashing animation
@@ -3241,7 +3244,7 @@ class PathfindingDemo:
         """
         day_food_adj = {}
         day_reward_adj = {}
-        day_team_step_bonus = {d: {1: 0, 2: 0, 3: 0} for d in range(1, 91)}
+        day_team_step_bonus = {d: {1: 0, 2: 0, 3: 0} for d in range(1, TOTAL_DAYS + 1)}
 
         b_bonus_map = {'B1': 5, 'B2': 8, 'B3': 10}
         x_bonus_map = {'X1': 5, 'X2': 8, 'X3': 10}
@@ -3323,7 +3326,7 @@ class PathfindingDemo:
                 merged.append(f'跳{jump_acc}')
             return merged
 
-        operations_by_day_team = {(d, t): [] for d in range(1, 91) for t in (1, 2, 3)}
+        operations_by_day_team = {(d, t): [] for d in range(1, TOTAL_DAYS + 1) for t in (1, 2, 3)}
         events = []
 
         for team_num, team in ((1, self.team1), (2, self.team2), (3, self.team3)):
@@ -3491,7 +3494,7 @@ class PathfindingDemo:
         return operations_by_day_team
 
     def _export_day_sheets_xlsx(self):
-        """Export operations into day sheets (1..90) of an Excel template workbook."""
+        """Export operations into day sheets (1..TOTAL_DAYS) of an Excel template workbook."""
         try:
             import os
             import sys
@@ -3578,7 +3581,7 @@ class PathfindingDemo:
             op_start_col = 3
             op_end_col = 27
 
-            for day in range(1, 91):
+            for day in range(1, TOTAL_DAYS + 1):
                 sheet_name = str(day)
                 if sheet_name not in wb.sheetnames:
                     continue
@@ -3863,14 +3866,14 @@ class PathfindingDemo:
             self._draw()
     
     def _init_day_records(self):
-        """Pre-generate day records for days 1-90 with base resources (no team moves yet).
+        """Pre-generate day records for days 1-TOTAL_DAYS with base resources (no team moves yet).
         
         Each day gets:
         - Day 1: 6800 food, 6 steps per team
         - Day N (N>1): base_food = 6800 + 1600*(N-1), 6*N steps per team (remaining capped at 18)
         """
         self.day_records = []
-        for day in range(1, 91):
+        for day in range(1, TOTAL_DAYS + 1):
             # Food: starts at 6800, +1600 per day
             food_available = 6800 + 1600 * (day - 1)
             
@@ -3894,9 +3897,9 @@ class PathfindingDemo:
         """Rebuild day_records by summing segment data for each day.
         
         This updates the food_used, reward_used, and per-team remaining steps for each day
-        based on teams' moves, while preserving the pre-generated day structure for all 90 days.
+        based on teams' moves, while preserving the pre-generated day structure for all TOTAL_DAYS days.
         """
-        # Initialize pre-generated days (1-90) with base resources
+        # Initialize pre-generated days (1-TOTAL_DAYS) with base resources
         self._init_day_records()
         
         # Collect all segments from all teams
@@ -3931,7 +3934,7 @@ class PathfindingDemo:
         # allowing edit-day overuse to auto-reduce future available steps.
         team_step_bank = {team: 0 for team in all_teams}
         
-        for day in range(1, 91):
+        for day in range(1, TOTAL_DAYS + 1):
             if day in day_totals:
                 food_used = day_totals[day]['food']
                 reward_used = day_totals[day]['reward']
@@ -3970,7 +3973,7 @@ class PathfindingDemo:
                 self.day_records[day - 1][team_key] = max(0, min(team_step_bank[team], 18))
             
             # Add 1600 food for next day
-            if day < 90:
+            if day < TOTAL_DAYS:
                 current_food += 1600
         
         # Recompute total_reward from day_records (single source of truth)
@@ -3985,7 +3988,7 @@ class PathfindingDemo:
             if team is None:
                 continue
             latest_day = max(team.created_day, getattr(team, 'max_day_reached', team.created_day))
-            latest_day = max(1, min(latest_day, 90))
+            latest_day = max(1, min(latest_day, TOTAL_DAYS))
             team.steps = self._get_team_steps_for_day(team, latest_day)
 
         # Keep current food aligned with the currently viewed day.
@@ -4037,7 +4040,7 @@ class PathfindingDemo:
         target_day = latest_move_day + 1
 
         # Clamp into the supported day-record range.
-        target_day = max(1, min(target_day, 90))
+        target_day = max(1, min(target_day, TOTAL_DAYS))
 
         print(
             f'[TEAM_DAY_JUMP] team={team_num}, latest_move_day={latest_move_day}, '

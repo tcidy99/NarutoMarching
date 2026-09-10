@@ -385,8 +385,8 @@
   },
   "map_files": {
     "csv": "map_S25.csv",
-    "image": "S24_map_rectified_transparent.png",
-    "image_extent": "S24_map_rectified_extent.json"
+    "image": "S25_map_rectified_transparent.png",
+    "image_extent": "S25_map_rectified_extent.json"
   },
   "season": {
     "start_date": "2026-09-11",

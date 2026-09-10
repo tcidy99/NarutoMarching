@@ -1,9 +1,9 @@
-"""Rebuilds S24_map_rectified.png (+ its .json extent sidecar) from a raw
-game screenshot.
+"""Rebuilds <season>_map_rectified.png (+ its .json extent sidecar) from a
+raw game screenshot.
 
-Run this whenever you have a new/better source screenshot to replace
-S24_map.png with. It does NOT run at app startup - hex_pathfinding_demo.py
-just loads the files this script produces.
+Run this whenever you have a new/better source screenshot for a season. It
+does NOT run at app startup - hex_pathfinding_demo.py just loads the files
+this script produces (named in landInfo.json's "map_files").
 
 What it does:
 
@@ -13,7 +13,7 @@ What it does:
    start hex by its distinctive highlight-border color as one anchor point,
    then estimate pixel-per-hex spacing from the bounding box of all detected
    hex blobs versus the known (ir, ic) extent of real terrain in
-   map_S24.csv. This only needs to be roughly right - it's just the seed for
+   map_<season>.csv. This only needs to be roughly right - it's just the seed for
    nearest-integer (ir, ic) assignment in step 1.
 
 1. Detect every hex's fill-color blob via connected-component analysis, and
@@ -40,22 +40,27 @@ What it does:
 
 Usage:
     cd tools
-    python rectify_map_image.py
+    python rectify_map_image.py --season S25 --src ../S25_map.png \
+        --out ../S25_map_rectified_transparent.png --st-pixel 6480 6885
 
 Requires: numpy, scipy, Pillow (all already project dependencies).
-Inputs (expected in the project root, one level up): S24_map.png (RGBA;
-does not need a transparent background - only used to help separate real
-content from background during blob detection, not required to be perfect),
-plus map_S24.csv, landInfo.json.
-Outputs: ../S24_map_rectified.png and ../S24_map_rectified_extent.json
-(the imshow() placement extent hex_pathfinding_demo.py reads at runtime).
+Inputs (in the project root, one level up): the source screenshot (RGBA
+preferred, e.g. from tools/remove_map_background.py - it does not need a
+perfect transparent background, alpha is only used to help separate real
+content from background during blob detection; an RGB JPG also works if its
+background is darker than the hexes), plus map_<season>.csv (the unique 'ST'
+cell marks the start hex) and landInfo.json.
+Outputs: ../<season>_map_rectified.png (or --out) and
+../<season>_map_rectified_extent.json (the imshow() placement extent
+hex_pathfinding_demo.py reads at runtime).
 
 If step 0's automatic ST-anchor detection fails (prints a warning / 0 pixels
 found), the source image's UI no longer highlights the current team position
 in the same orange/green style - open the image, find the "1队" (or similar)
-highlighted hex near the team's start position, and set ST_PIXEL_OVERRIDE
-below by hand (sample a pixel in the middle of that hex).
+highlighted hex near the team's start position, and pass --st-pixel X Y
+(a pixel roughly in the middle of that hex).
 """
+import argparse
 import csv
 import json
 import os
@@ -64,12 +69,28 @@ import numpy as np
 from PIL import Image
 from scipy import ndimage
 
+
+def _parse_args():
+    p = argparse.ArgumentParser(description=__doc__.split('\n\n')[0])
+    p.add_argument('--season', default='S25',
+                   help='season prefix: reads map_<season>.csv, writes <season>_map_rectified*.png/.json')
+    p.add_argument('--src', help='source screenshot (default: <season>_map.png, else <season>_map.jpg)')
+    p.add_argument('--out', help='output PNG (default: <season>_map_rectified.png)')
+    p.add_argument('--st-pixel', nargs=2, type=float, metavar=('X', 'Y'),
+                   help="pixel near the centre of the highlighted 'current team position' hex; "
+                        "bypasses auto-detection")
+    return p.parse_args()
+
+
+_ARGS = _parse_args()
+SEASON = _ARGS.season
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SRC_IMAGE_PNG = os.path.join(PROJECT_ROOT, 'S24_map.png')
-SRC_IMAGE_JPG = os.path.join(PROJECT_ROOT, 'S24_map.jpg')
-MAP_CSV = os.path.join(PROJECT_ROOT, 'map_S24.csv')
+SRC_IMAGE_PNG = os.path.join(PROJECT_ROOT, f'{SEASON}_map.png')
+SRC_IMAGE_JPG = os.path.join(PROJECT_ROOT, f'{SEASON}_map.jpg')
+MAP_CSV = os.path.join(PROJECT_ROOT, f'map_{SEASON}.csv')
 LAND_INFO = os.path.join(PROJECT_ROOT, 'landInfo.json')
-OUTPUT_PNG = os.path.join(PROJECT_ROOT, 'S24_map_rectified.png')
+OUTPUT_PNG = _ARGS.out or os.path.join(PROJECT_ROOT, f'{SEASON}_map_rectified.png')
+EXTENT_JSON = os.path.join(PROJECT_ROOT, f'{SEASON}_map_rectified_extent.json')
 
 HEX_SIZE = 5.0
 X_SCALE = 1.0
@@ -77,20 +98,16 @@ Y_SCALE = 0.6
 ROWS = COLS = 60
 OUTPUT_LONG_EDGE = 2600  # keep in sync with app's own display budget
 
-# Internal (ir, ic) of the unique 'ST' start hex, and the color range of its
-# distinctive in-game highlight border (orange/red ring around the team's
-# current-position marker). Used only to seed the rough affine estimate.
-ST_IR, ST_IC = 14, 13
+# Color range of the unique 'ST' start hex's distinctive in-game highlight
+# border (orange/red ring around the team's current-position marker). Used
+# only to seed the rough affine estimate.
 ST_COLOR_RANGE = dict(r_lo=140, r_hi=220, g_lo=40, g_hi=130, b_hi=80)
 
 # Auto-detection of the ST highlight color is unreliable when similar tan/
-# orange terrain tones appear elsewhere in the image (it did on the current
-# S24_map.png - matched a terrain patch instead of the actual highlight).
-# Set this to (pixel_x, pixel_y) to bypass auto-detection entirely once
-# you've located the highlighted "team position" hex by hand (crop the image
-# near the team's start, zoom in, read off a pixel roughly in the middle of
-# that hex). Leave as None to use auto-detection.
-ST_PIXEL_OVERRIDE = (1817.5, 2501.0)
+# orange terrain tones appear elsewhere in the image (it did on S24_map.png -
+# matched a terrain patch instead of the actual highlight), so --st-pixel
+# bypasses it entirely.
+ST_PIXEL_OVERRIDE = tuple(_ARGS.st_pixel) if _ARGS.st_pixel else None
 
 
 def _center(ir, ic):
@@ -115,7 +132,10 @@ def _load_terrain_extent():
                 non_empty.append((ir, ic))
     irs = [p[0] for p in non_empty]
     ics = [p[1] for p in non_empty]
-    return raw, land_info, (min(irs), max(irs)), (min(ics), max(ics))
+    st_cells = [(ir, ic) for ir in range(ROWS) for ic in range(COLS) if raw[ir][ic].strip().upper() == 'ST']
+    if len(st_cells) != 1:
+        raise RuntimeError(f'expected exactly one ST cell in {MAP_CSV}, found {len(st_cells)}')
+    return raw, land_info, (min(irs), max(irs)), (min(ics), max(ics)), st_cells[0]
 
 
 def _fill_mask(arr, alpha):
@@ -161,8 +181,9 @@ def _find_st_pixel(arr, mask):
     return best
 
 
-def estimate_initial_affine(arr, mask, terrain_extent):
+def estimate_initial_affine(arr, mask, terrain_extent, st_cell):
     (ir_min, ir_max), (ic_min, ic_max) = terrain_extent
+    st_ir, st_ic = st_cell
 
     labeled, n = ndimage.label(mask)
     sizes = ndimage.sum(mask, labeled, range(1, n + 1))
@@ -193,16 +214,16 @@ def estimate_initial_affine(arr, mask, terrain_extent):
     if st_px is None:
         raise RuntimeError(
             "Could not auto-locate the ST hex via highlight color. "
-            "Set ST_PIXEL_OVERRIDE near the top of this script by hand "
-            "(sample a pixel in the middle of the highlighted 'current team "
-            "position' hex near the start point) and re-run."
+            "Pass --st-pixel X Y by hand (a pixel in the middle of the "
+            "highlighted 'current team position' hex near the start point) "
+            "and re-run."
         )
     st_px_x, st_px_y = st_px
-    print(f'  ST hex at pixel ({st_px_x:.1f}, {st_px_y:.1f})')
+    print(f'  ST hex (ir={st_ir}, ic={st_ic}) at pixel ({st_px_x:.1f}, {st_px_y:.1f})')
 
-    x0 = st_px_x - ST_IC * dx
+    x0 = st_px_x - st_ic * dx
     half = dy / 2
-    y0 = st_px_y + ST_IR * dy + (half if ST_IC % 2 == 1 else 0)
+    y0 = st_px_y + st_ir * dy + (half if st_ic % 2 == 1 else 0)
     return x0, dx, y0, dy, half, (lo, hi)
 
 
@@ -298,26 +319,25 @@ def place_whole_image(im, affine):
 
 
 def main():
-    if os.path.exists(SRC_IMAGE_PNG):
-        src_path = SRC_IMAGE_PNG
+    src_path = _ARGS.src or (SRC_IMAGE_PNG if os.path.exists(SRC_IMAGE_PNG) else SRC_IMAGE_JPG)
+    im = Image.open(src_path)
+    if im.mode == 'RGBA':
         print(f'loading {src_path} (RGBA) ...')
-        im = Image.open(src_path).convert('RGBA')
         full = np.array(im).astype(np.int32)
         arr = full[:, :, :3]
         src_alpha = full[:, :, 3]
     else:
-        src_path = SRC_IMAGE_JPG
-        print(f'loading {src_path} (no S24_map.png found, using brightness-only detection) ...')
-        im = Image.open(src_path).convert('RGB')
+        print(f'loading {src_path} (no alpha channel, using brightness-only detection) ...')
+        im = im.convert('RGB')
         arr = np.array(im).astype(np.int32)
         src_alpha = None
     print('image size', im.size)
 
     mask = _fill_mask(arr, src_alpha)
-    raw, land_info, ir_extent, ic_extent = _load_terrain_extent()
+    raw, land_info, ir_extent, ic_extent, st_cell = _load_terrain_extent()
 
     print('estimating initial affine calibration...')
-    x0, dx, y0, dy, half, size_bounds = estimate_initial_affine(arr, mask, (ir_extent, ic_extent))
+    x0, dx, y0, dy, half, size_bounds = estimate_initial_affine(arr, mask, (ir_extent, ic_extent), st_cell)
     print(f'  seed: X0={x0:.2f} DX={dx:.2f} Y0={y0:.2f} DY={dy:.2f} HALF={half:.2f}')
 
     _correspondences, fitted_affine = detect_correspondences(arr, mask, x0, dx, y0, dy, half, size_bounds)
@@ -335,10 +355,9 @@ def main():
     Image.fromarray(out, 'RGBA').save(OUTPUT_PNG)
     print(f'saved {OUTPUT_PNG}  size={out.shape[1]}x{out.shape[0]}')
 
-    extent_path = os.path.splitext(OUTPUT_PNG)[0] + '_extent.json'
-    with open(extent_path, 'w') as f:
+    with open(EXTENT_JSON, 'w') as f:
         json.dump({'extent': extent}, f)
-    print(f'saved {extent_path}  extent={extent}')
+    print(f'saved {EXTENT_JSON}  extent={extent}')
 
 
 if __name__ == '__main__':

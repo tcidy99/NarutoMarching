@@ -87,10 +87,10 @@
 	"hatch": "x",
     "food": -300,
 	"degrade": [
-		{"day": 11, "food": -250},
-		{"day": 21, "food": -200},
-		{"day": 36, "food": -150},
-		{"day": 51, "food": -100}
+		{"day": 15, "food": -250},
+		{"day": 25, "food": -200},
+		{"day": 43, "food": -150},
+		{"day": 64, "food": -100}
 	],
 	"step": -1,
     "award": 0
@@ -385,8 +385,8 @@
   },
   "map_files": {
     "csv": "map_S25.csv",
-    "image": "S24_map_rectified_transparent.png",
-    "image_extent": "S24_map_rectified_extent.json"
+    "image": "S25_map_rectified_transparent.png",
+    "image_extent": "S25_map_rectified_extent.json"
   },
   "season": {
     "start_date": "2026-09-11",

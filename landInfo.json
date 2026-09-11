@@ -147,7 +147,7 @@
   },
   "X1": {
 	"name": "xunji_1",
-	"label": "迅1",
+	"label": "Speed1",
     "edge": "r",
     "face": "#D0CECE",
 	"hatch": "",
@@ -159,7 +159,7 @@
   },
   "B1": {
 	"name": "bingliang_1",
-	"label": "粮1",
+	"label": "Food1",
     "edge": "r",
     "face": "#D0CECE",
 	"hatch": "",
@@ -171,7 +171,7 @@
   },
   "Z1": {
 	"name": "zhanxun_1",
-	"label": "勋1",
+	"label": "RWD1",
     "edge": "r",
     "face": "#D0CECE",
 	"hatch": "",
@@ -183,7 +183,7 @@
   },
   "X2": {
 	"name": "xunji_2",
-	"label": "迅2",
+	"label": "speed2",
     "edge": "r",
     "face": "#E2EFDA",
 	"hatch": "",
@@ -195,7 +195,7 @@
   },
   "B2": {
 	"name": "bingliang_2",
-	"label": "粮2",
+	"label": "Food2",
     "edge": "r",
     "face": "#E2EFDA",
 	"hatch": "",
@@ -207,7 +207,7 @@
   },
   "Z2": {
 	"name": "zhanxun_2",
-	"label": "勋2",
+	"label": "RWD2",
     "edge": "r",
     "face": "#E2EFDA",
 	"hatch": "",
@@ -219,7 +219,7 @@
   },
   "X3": {
 	"name": "xunji_3",
-	"label": "迅3",
+	"label": "Speed3",
     "edge": "r",
     "face": "#DDEBF7",
 	"hatch": "",
@@ -231,7 +231,7 @@
   },
   "B3": {
 	"name": "bingliang_3",
-	"label": "粮3",
+	"label": "Food3",
     "edge": "r",
     "face": "#DDEBF7",
 	"hatch": "",
@@ -243,7 +243,7 @@
   },
   "Z3": {
 	"name": "zhanxun_3",
-	"label": "勋3",
+	"label": "RWD3",
     "edge": "r",
     "face": "#DDEBF7",
 	"hatch": "",

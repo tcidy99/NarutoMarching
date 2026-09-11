@@ -1786,6 +1786,12 @@ class PathfindingDemo:
         self.fly_skill_limit = 1
         self.total_food = 0
 
+        # Origins that are still-unsettled free-exploration hexes of some team
+        # (a team was created on a probe hex nobody has paid for yet) must not
+        # be marked taken - see _init_team_created_at.
+        explored = {tuple(h) for t in teams for seg in t._seg_exploration_hexes for h in seg}
+        unsettled_origins = {h for h in explored if not self._is_hex_settled(h)}
+
         for team in teams:
             self._ensure_team_segment_path_nodes(team)
 
@@ -1801,7 +1807,11 @@ class PathfindingDemo:
             team._no_draw_edges = set()
             team.max_day_reached = team.created_day
 
-            self.all_visited_hexes.add(team.origin)
+            if team.origin in unsettled_origins:
+                # Created on a probe hex: inherits the obligation to settle it.
+                team.free_exploration_hexes.add(team.origin)
+            else:
+                self.all_visited_hexes.add(team.origin)
             if team.origin in self.all_g_lands:
                 self.visited_g_lands.add(team.origin)
 
@@ -1892,6 +1902,20 @@ class PathfindingDemo:
 
     # ── Team management ───────────────────────────────────────────────────────
 
+    def _init_team_created_at(self, old_team, new_team, current_pos):
+        """Shared bookkeeping for a team created on the active team's current hex.
+
+        A still-unsettled free-exploration hex stays unsettled: the new team
+        inherits the obligation (whichever team leaves first settles it) and it
+        must NOT be marked globally taken yet - otherwise a third team walking
+        onto it is treated as a 10-food revisit instead of occupying it."""
+        if current_pos in old_team.free_exploration_hexes and not self._is_hex_settled(current_pos):
+            new_team.free_exploration_hexes.add(current_pos)
+        else:
+            self.all_visited_hexes.add(current_pos)
+        if current_pos in self.all_g_lands:
+            self.visited_g_lands.add(current_pos)
+
     def _set_team2_start(self):
         """Create Team 2 at the current active team's position."""
         if self.team2 is not None:
@@ -1901,16 +1925,7 @@ class PathfindingDemo:
             old_team = self.active_team
             current_pos = old_team.full_path[-1]
             self.team2 = Team(current_pos, created_day=self.current_day)
-            
-            # If the starting position was an exploration hex of the old team, mark it for the new team too
-            # This requires the new team to challenge the hex before leaving
-            if current_pos in old_team.free_exploration_hexes:
-                self.team2.free_exploration_hexes.add(current_pos)
-            
-            self.all_visited_hexes.add(current_pos)  # Add to global set for visualization
-            # Track G/g land visits
-            if current_pos in self.all_g_lands:
-                self.visited_g_lands.add(current_pos)
+            self._init_team_created_at(old_team, self.team2, current_pos)
             self.active_team = self.team2
             self._update_switch_button_color()
             # Hide the legacy Set Team 2 button if present.
@@ -1928,16 +1943,7 @@ class PathfindingDemo:
             old_team = self.active_team
             current_pos = old_team.full_path[-1]
             self.team3 = Team(current_pos, created_day=self.current_day)
-            
-            # If the starting position was an exploration hex of the old team, mark it for the new team too
-            # This requires the new team to challenge the hex before leaving
-            if current_pos in old_team.free_exploration_hexes:
-                self.team3.free_exploration_hexes.add(current_pos)
-            
-            self.all_visited_hexes.add(current_pos)  # Add to global set for visualization
-            # Track G/g land visits
-            if current_pos in self.all_g_lands:
-                self.visited_g_lands.add(current_pos)
+            self._init_team_created_at(old_team, self.team3, current_pos)
             self.active_team = self.team3
             self._update_switch_button_color()
             # Hide the legacy Set Team 3 button if present.
@@ -2256,16 +2262,7 @@ class PathfindingDemo:
                 old_team = self.active_team
                 current_pos = old_team.full_path[-1]
                 self.team2 = Team(current_pos, created_day=self.current_day)
-                
-                # If the starting position was an exploration hex of the old team, mark it for the new team too
-                if current_pos in old_team.free_exploration_hexes:
-                    self.team2.free_exploration_hexes.add(current_pos)
-                
-                self.all_visited_hexes.add(current_pos)
-                # Track G/g land visits
-                if current_pos in self.all_g_lands:
-                    self.visited_g_lands.add(current_pos)
-                
+                self._init_team_created_at(old_team, self.team2, current_pos)
                 self.active_team = self.team2
                 self._update_switch_button_color()
                 self._status_msg = 'Team 2 created at active team position.'
@@ -2279,16 +2276,7 @@ class PathfindingDemo:
                 old_team = self.active_team
                 current_pos = old_team.full_path[-1]
                 self.team3 = Team(current_pos, created_day=self.current_day)
-                
-                # If the starting position was an exploration hex of the old team, mark it for the new team too
-                if current_pos in old_team.free_exploration_hexes:
-                    self.team3.free_exploration_hexes.add(current_pos)
-                
-                self.all_visited_hexes.add(current_pos)
-                # Track G/g land visits
-                if current_pos in self.all_g_lands:
-                    self.visited_g_lands.add(current_pos)
-                
+                self._init_team_created_at(old_team, self.team3, current_pos)
                 self.active_team = self.team3
                 self._update_switch_button_color()
                 self._status_msg = 'Team 3 created at active team position.'
@@ -2577,6 +2565,40 @@ class PathfindingDemo:
             today_consumed = sum(seg_steps for seg_idx, seg_steps in enumerate(team._seg_steps) if team._seg_days[seg_idx] == day)
             
             return max(0, available_today - today_consumed)
+
+    def _is_hex_settled(self, hex_pos):
+        """True once some team has paid this hex's challenge (it appears in a
+        segment's new-hex list). all_visited_hexes can't answer this: creating a
+        team on another team's free-exploration hex adds it there for display
+        before anyone has paid for it."""
+        hex_pos = tuple(hex_pos)
+        return any(
+            tuple(h) == hex_pos
+            for team in (self.team1, self.team2, self.team3) if team is not None
+            for seg_new in team._seg_new_hexes
+            for h in seg_new
+        )
+
+    def _activate_land_buffs(self, hex_pos):
+        """Start the X/B/Z buff granted by capturing hex_pos (if it is one of
+        those lands); returns a status-message suffix."""
+        name = RAW_MAP[hex_pos[0]][hex_pos[1]]
+        team = self.active_team
+        if name in X_BONUS_MAP:
+            team.x_bonus_remaining = X_BONUS_MAP[name]
+            team.x_bonus_name = name
+            return f' +{team.x_bonus_remaining} free movements ({name})!'
+        if name in B_DISCOUNT_MAP:
+            team.b_discount_remaining = B_DISCOUNT_MAP[name]
+            team.b_discount_name = name
+            rate = _TERRAIN_DB.get(name, {}).get('food_discount_rate', 0.4)
+            return f' {int(rate * 100)}% food discount active for next {team.b_discount_remaining} movements!'
+        if name in Z_BONUS_MAP:
+            team.z_bonus_remaining = Z_BONUS_MAP[name]
+            team.z_bonus_name = name
+            rate = _TERRAIN_DB.get(name, {}).get('reward_bonus_rate', 1.4)
+            return f' {int((rate - 1) * 100)}% reward bonus active for next {team.z_bonus_remaining} movements!'
+        return ''
 
     def _are_all_g_lands_visited(self):
         """Check if all G/g lands have been visited by any team."""
@@ -2895,14 +2917,24 @@ class PathfindingDemo:
             self.active_team.visited_hexes.discard(hex_pos)
             # Only remove from global set if only this team visited it
             # Check if any other team has this hex
+            # A team that merely probed the hex (still in its free-exploration
+            # set) or was created on it does not own it - only a paid visit does.
             other_teams_visited = False
             for team in [self.team1, self.team2, self.team3]:
-                if team and team is not self.active_team and hex_pos in team.visited_hexes:
+                if (team and team is not self.active_team and hex_pos in team.visited_hexes
+                        and hex_pos not in team.free_exploration_hexes):
                     other_teams_visited = True
                     break
             if not other_teams_visited:
                 self.all_visited_hexes.discard(hex_pos)
-        
+
+        # A hex settled on departure (probe / deferred fly landing) reverts to an
+        # unsettled exploration hex the team is still standing on.
+        pos_after = self.active_team.full_path[-1]
+        if pos_after in new_hexes_undone:
+            self.active_team.visited_hexes.add(pos_after)
+            self.active_team.free_exploration_hexes.add(pos_after)
+
         # Remove any no-draw edges that involve the removed segment
         # This cleans up portal teleport markers when undoing
         edges_to_remove = set()
@@ -4255,7 +4287,30 @@ class PathfindingDemo:
                 
                 try:
                     t = _terrain(*pos)
-                    
+                    is_new_hex = pos not in self.all_visited_hexes
+                    # Landing by fly on an untaken, capturable (step > 0), non-portal
+                    # hex does not occupy it yet: like a probe step, it is settled
+                    # (challenge food + reward + 1 step) when the team leaves it.
+                    # Portals (step 0), Tents and other step<=0 terrain keep the
+                    # immediate handling below.
+                    defer_capture = is_new_hex and t.get('step', 1) > 0
+
+                    # Flying off a still-unsettled probe / deferred-fly hex settles
+                    # it, exactly like walking off it does.
+                    is_leaving_exploration = (
+                        current_pos in self.active_team.free_exploration_hexes
+                        and not self._is_hex_settled(current_pos)
+                    )
+                    dep_food = dep_award = 0
+                    if is_leaving_exploration:
+                        dep_t = _terrain(*current_pos)
+                        dep_food = _apply_challenge_discounts(
+                            _get_terrain_food(dep_t, self.current_day), self.active_team,
+                            self._are_all_g_lands_visited(), is_tent=dep_t.get('name') == 'Tent')
+                        dep_award = dep_t['award']
+                        if self.active_team.z_bonus_remaining > 0:
+                            dep_award = _apply_z_bonus(dep_award, self.active_team)
+
                     # Calculate base challenge cost for destination terrain.
                     # Fly usually waives movement food, but BigBoss still charges movement food.
                     challenge_food = _get_terrain_food(t, self.current_day)
@@ -4265,6 +4320,8 @@ class PathfindingDemo:
                         self._are_all_g_lands_visited(),
                         is_tent=t.get('name') == 'Tent'
                     )
+                    if defer_capture:
+                        challenge_food = 0
                     movement_food = 0
                     if t.get('name') == 'bigBoss':
                         movement_food = _apply_g_reduction(50, self._are_all_g_lands_visited())
@@ -4275,9 +4332,9 @@ class PathfindingDemo:
                         'revisit': 0,
                         'total': seg_food,
                     }
-                    seg_award = t['award']
+                    seg_award = 0 if defer_capture else t['award']
                     # Apply Z bonus if active
-                    if self.active_team.z_bonus_remaining > 0 and pos not in self.all_visited_hexes:
+                    if self.active_team.z_bonus_remaining > 0 and is_new_hex and not defer_capture:
                         seg_award = _apply_z_bonus(seg_award, self.active_team)
                     seg_steps = 0  # Fly doesn't use steps
                     # If terrain gives steps back (e.g. Tent step=-1), apply benefit for new hexes
@@ -4298,7 +4355,13 @@ class PathfindingDemo:
                             'revisit': seg_food,
                             'total': seg_food,
                         }
-                    
+
+                    landing_food, landing_award = seg_food, seg_award
+                    seg_food += dep_food
+                    seg_award += dep_award
+                    if is_leaving_exploration:
+                        seg_steps += 1
+
                     # Day advancement if needed
                     seg_start_day = self.current_day
                     # Attribute fly skill move to current viewing day, not max_day_reached
@@ -4313,7 +4376,13 @@ class PathfindingDemo:
                     if (not allow_borrow_edit_resources) and self.current_food < seg_food:
                         steps_avail = self._get_team_steps_for_day(self.active_team, self.current_day)
                         raise RuntimeError(self._build_not_enough_food_message(seg_food, steps_avail))
-                    
+                    if is_leaving_exploration and not allow_borrow_edit_resources:
+                        steps_avail = self._get_team_steps_for_day(self.active_team, self.current_day)
+                        if steps_avail < 1:
+                            raise RuntimeError(
+                                f'Not enough steps! Settling ({current_pos[0]},{current_pos[1]}) on departure '
+                                f'needs 1, have {steps_avail}. Please click "Next Day" button to advance.')
+
                     # Apply teleportation
                     self.active_team.full_path.append(pos)
                     
@@ -4326,13 +4395,17 @@ class PathfindingDemo:
                     self.active_team._seg_awards.append(seg_award)
                     self.active_team._seg_steps.append(seg_steps)
                     self.active_team._seg_days.append(seg_day)
-                    self.active_team._seg_new_hexes.append([pos] if pos not in self.all_visited_hexes else [])
-                    self.active_team._seg_exploration_hexes.append([])
+                    is_fly_new_hex = is_new_hex and not defer_capture  # captured on landing
+                    captured = ([current_pos] if is_leaving_exploration else []) + ([pos] if is_fly_new_hex else [])
+                    self.active_team._seg_new_hexes.append(captured)
+                    self.active_team._seg_exploration_hexes.append([pos] if defer_capture else [])
                     self.active_team._seg_jumps.append([])  # No jumps for fly skill
                     self.active_team._seg_path_nodes.append([pos])
                     self.active_team._seg_end_positions.append(pos)
-                    self.active_team._seg_action_sequence.append([('new', pos)] if pos not in self.all_visited_hexes else [])
-                    self.active_team._seg_hex_costs.append([(seg_food, seg_award, 0)])
+                    self.active_team._seg_action_sequence.append([('new', h) for h in captured])
+                    self.active_team._seg_hex_costs.append(
+                        ([(dep_food, dep_award, 1)] if is_leaving_exploration else [])
+                        + [(landing_food, landing_award, 0)])
                     self.active_team._seg_is_fly_skill.append(True)  # Mark as fly skill move
                     
                     self.current_food -= seg_food
@@ -4343,51 +4416,45 @@ class PathfindingDemo:
                     self.fly_skill_limit -= 1
                     seg_fly_skill_delta = -1
                     
-                    # Check if destination is bigBoss and increment limit (only if NEW hex)
-                    is_new_hex = pos not in self.all_visited_hexes
+                    # BigBoss grants +1 fly skill when captured: on landing if captured
+                    # now, or when a deferred-fly / probe hex is settled on departure.
                     dest_terrain = _terrain(pos[0], pos[1])
-                    if dest_terrain.get('name') == 'bigBoss' and is_new_hex:
+                    if dest_terrain.get('name') == 'bigBoss' and is_fly_new_hex:
                         self.fly_skill_limit += 1
                         seg_fly_skill_delta += 1
                         self._status_msg = f'✓ Flew to ({pos[0]},{pos[1]})! Reached BigBoss! Fly skill +1 (now {self.fly_skill_limit})'
+                    elif defer_capture:
+                        self._status_msg = f'✓ Flew to ({pos[0]},{pos[1]}) - settled on departure. Fly skill limit: {self.fly_skill_limit}'
                     else:
                         self._status_msg = f'✓ Flew to ({pos[0]},{pos[1]})! Fly skill limit: {self.fly_skill_limit}'
-                    
-                    # Check for X1, X2, X3 bonus free movements
+                    if is_leaving_exploration and _terrain(*current_pos).get('name') == 'bigBoss':
+                        self.fly_skill_limit += 1
+                        seg_fly_skill_delta += 1
+                        self._status_msg += f' ⭐ Settled BigBoss! Fly skill +1 (now {self.fly_skill_limit})'
+
+                    # Check for X1, X2, X3 bonus free movements (only if captured on landing)
                     dest_terrain_name = RAW_MAP[pos[0]][pos[1]]
-                    bonus_movements = 0
-                    bonus_msg = ''
-                    if dest_terrain_name == 'X1':
-                        bonus_movements = 5
-                        bonus_msg = ' +5 free movements (X1)!'
-                    elif dest_terrain_name == 'X2':
-                        bonus_movements = 8
-                        bonus_msg = ' +8 free movements (X2)!'
-                    elif dest_terrain_name == 'X3':
-                        bonus_movements = 10
-                        bonus_msg = ' +10 free movements (X3)!'
-                    
-                    # Only apply X bonus if landing on NEW hex
-                    if bonus_movements > 0 and pos not in self.all_visited_hexes:
-                        self.active_team.x_bonus_remaining = bonus_movements
-                        self.active_team.x_bonus_name = dest_terrain_name
-                        self._status_msg += bonus_msg
-                    
-                    # Only count as movement if landing on NEW hex (not already visited)
-                    is_fly_new_hex = pos not in self.all_visited_hexes
-                    
-                    # Decrement existing B discount only if landing on new hex
-                    if is_fly_new_hex and self.active_team.b_discount_remaining > 0:
-                        self.active_team.b_discount_remaining -= 1
+                    if dest_terrain_name in X_BONUS_MAP and is_fly_new_hex:
+                        self._status_msg += self._activate_land_buffs(pos)
+
+                    # Captured hexes (departure settle + landing) count as movements
+                    # for existing B/Z buffs; a deferred landing does not.
+                    movement_count = len(captured)
+
+                    if movement_count > 0 and self.active_team.b_discount_remaining > 0:
+                        self.active_team.b_discount_remaining = max(0, self.active_team.b_discount_remaining - movement_count)
                         if self.active_team.b_discount_remaining == 0:
                             self._status_msg += ' B discount expired.'
-                    
-                    # Decrement existing Z bonus only if landing on new hex
-                    if is_fly_new_hex and self.active_team.z_bonus_remaining > 0:
-                        self.active_team.z_bonus_remaining -= 1
+
+                    if movement_count > 0 and self.active_team.z_bonus_remaining > 0:
+                        self.active_team.z_bonus_remaining = max(0, self.active_team.z_bonus_remaining - movement_count)
                         if self.active_team.z_bonus_remaining == 0:
                             self._status_msg += ' Z reward bonus expired.'
-                    
+
+                    # A hex settled on departure is captured now, so its buff starts now.
+                    if is_leaving_exploration:
+                        self._status_msg += self._activate_land_buffs(current_pos)
+
                     # Check for B1, B2, B3 bonus food discount (activate only if landing on NEW B hex)
                     if dest_terrain_name in ('B1', 'B2', 'B3') and is_fly_new_hex:
                         self.active_team.b_discount_remaining = B_DISCOUNT_MAP.get(dest_terrain_name, 5)
@@ -4402,12 +4469,21 @@ class PathfindingDemo:
                         bonus_rate = _TERRAIN_DB.get(dest_terrain_name, {}).get('reward_bonus_rate', 1.4)
                         self._status_msg += f' {int((bonus_rate-1)*100)}% reward bonus active for next {self.active_team.z_bonus_remaining} movements!'
                     
-                    if pos not in self.all_visited_hexes:
+                    if defer_capture:
+                        self.active_team.visited_hexes.add(pos)
+                        self.active_team.free_exploration_hexes.add(pos)
+                        if pos in self.all_g_lands:
+                            self.visited_g_lands.add(pos)
+                    elif is_new_hex:
                         self.active_team.visited_hexes.add(pos)
                         self.all_visited_hexes.add(pos)
                         # Track G/g land visits
                         if pos in self.all_g_lands:
                             self.visited_g_lands.add(pos)
+                    if is_leaving_exploration:
+                        self.all_visited_hexes.add(current_pos)
+                    # Unconditional: also drops a stale entry for a hex another team settled.
+                    self.active_team.free_exploration_hexes.discard(current_pos)
 
                     self.active_team._seg_fly_skill_deltas.append(seg_fly_skill_delta)
                     
@@ -4470,10 +4546,19 @@ class PathfindingDemo:
             
             # Get current position for exploration and departure checks
             current_pos = self.active_team.full_path[-1]
-            
+
+            # Leaving a hex this team explored "for free" settles it (challenge food
+            # + reward) - unless another team already paid for it: a team created
+            # on someone's exploration hex inherits it, and whichever team moves
+            # off first settles it, so the other must not be charged again.
+            is_leaving_exploration = (
+                current_pos in self.active_team.free_exploration_hexes
+                and not self._is_hex_settled(current_pos)
+            )
+
             # Get the display steps for the current viewing day (use this for all step checks)
             steps_available_for_day = self._get_team_steps_for_day(self.active_team, self.current_day)
-            
+
             # Check for free exploration mode: if team has 0 steps but can move to adjacent untaken hex
             free_exploration = False
             if steps_available_for_day == 0 and self.active_team.x_bonus_remaining <= 0 and len(added) == 1:
@@ -4481,11 +4566,10 @@ class PathfindingDemo:
                 if hex_to_explore not in self.all_visited_hexes:
                     explore_terrain = _terrain(*hex_to_explore)
                     if explore_terrain.get('step', 1) > 0:
-                        if current_pos not in self.active_team.free_exploration_hexes:
+                        if not is_leaving_exploration:
                             free_exploration = True
-            
+
             # If leaving a free exploration hex, calculate its challenge food cost
-            is_leaving_exploration = current_pos in self.active_team.free_exploration_hexes
             departure_challenge = 0
             departure_is_tent = False
             if is_leaving_exploration:
@@ -4711,9 +4795,9 @@ class PathfindingDemo:
                     if h in self.all_g_lands:
                         self.visited_g_lands.add(h)
             
-            if is_leaving_exploration:
-                self.active_team.free_exploration_hexes.discard(current_pos)
-            
+            # Unconditional: also drops a stale entry for a hex another team settled.
+            self.active_team.free_exploration_hexes.discard(current_pos)
+
             portal_status = self._check_portal_teleport()
             if self.active_team._seg_end_positions:
                 self.active_team._seg_end_positions[-1] = self.active_team.full_path[-1]
@@ -4761,7 +4845,12 @@ class PathfindingDemo:
                         self.active_team._seg_fly_skill_deltas[-1] += 1
                     self._status_msg = f'{self._status_msg} ⭐ Reached BigBoss! Fly skill +1 (now {self.fly_skill_limit})'
                     break  # Only count one bigBoss per segment
-            
+
+            # A hex settled on departure (probe / deferred fly landing) is captured
+            # now, so its X/B/Z buff starts now.
+            if is_leaving_exploration:
+                self._status_msg = f'{self._status_msg}{self._activate_land_buffs(current_pos)}'
+
             # Check for B1, B2, B3 bonus food discount (activate only if landing on NEW B hex)
             if final_terrain_name in ('B1', 'B2', 'B3') and final_pos in new_hexes:
                 self.active_team.b_discount_remaining = B_DISCOUNT_MAP.get(final_terrain_name, 5)

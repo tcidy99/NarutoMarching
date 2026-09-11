@@ -628,6 +628,11 @@ class PathfindingDemo:
         self._day_number_text = self.fig.text(0.95, 0.86, self._format_day_with_date(1),
                               ha='center', va='center', fontsize=10, fontweight='bold',
                               bbox=dict(boxstyle='round,pad=0.35', facecolor='#fff9d6', edgecolor="#f1ef62", linewidth=2.0))
+        self._map_image_credit_text = self.fig.text(
+            0.95, 0.94, '图片来自sx弑邪\n贴吧群659503174',
+            ha='center', va='center', fontsize=19.2, color="#b6b6b6cf",
+            alpha=0.16, linespacing=1.15, visible=False,
+        )
 
         # Load/Save buttons at bottom right - touching edge
         bax_load = self.fig.add_axes([0.914, 0.002, 0.043, 0.025])
@@ -5893,6 +5898,7 @@ class PathfindingDemo:
 
         # Update day number display
         self._day_number_text.set_text(self._format_day_with_date(self.current_day))
+        self._map_image_credit_text.set_visible(self._map_view_mode == 'image')
 
         # Update team button labels with remaining steps
         self._update_team_button_labels()

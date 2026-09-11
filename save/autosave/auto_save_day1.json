@@ -1,6 +1,6 @@
 {
-  "current_day": 1,
-  "current_food": 5500,
+  "current_day": 3,
+  "current_food": 8700,
   "total_food": 1300,
   "total_reward": 7340,
   "fly_skill_limit": 1,
@@ -438,8 +438,49 @@
     ],
     "_no_draw_edges": []
   },
-  "team3": null,
-  "active_team_num": 2,
+  "team3": {
+    "full_path": [
+      [
+        23,
+        10
+      ]
+    ],
+    "origin": [
+      23,
+      10
+    ],
+    "visited_hexes": [
+      [
+        23,
+        10
+      ]
+    ],
+    "free_exploration_hexes": [],
+    "x_bonus_remaining": 0,
+    "x_bonus_name": null,
+    "b_discount_remaining": 0,
+    "b_discount_name": null,
+    "z_bonus_remaining": 0,
+    "z_bonus_name": null,
+    "max_day_reached": 1,
+    "created_day": 1,
+    "_seg_foods": [],
+    "_seg_steps": [],
+    "_seg_awards": [],
+    "_seg_days": [],
+    "_seg_new_hexes": [],
+    "_seg_exploration_hexes": [],
+    "_seg_jumps": [],
+    "_seg_path_nodes": [],
+    "_seg_end_positions": [],
+    "_seg_action_sequence": [],
+    "_seg_lengths": [],
+    "_seg_hex_costs": [],
+    "_seg_is_fly_skill": [],
+    "_seg_fly_skill_deltas": [],
+    "_no_draw_edges": []
+  },
+  "active_team_num": 3,
   "all_visited_hexes": [
     [
       15,

@@ -55,7 +55,7 @@ except Exception:
     pass
 
 import matplotlib.pyplot as plt
-from matplotlib.patches import RegularPolygon, Rectangle, Circle
+from matplotlib.patches import RegularPolygon, Rectangle, Circle, Polygon
 from matplotlib.collections import PolyCollection
 from matplotlib.transforms import Affine2D
 from matplotlib.widgets import Button
@@ -67,6 +67,8 @@ import heapq
 import threading
 import time
 import re
+import ctypes
+import struct
 from datetime import date, timedelta
 
 # ── Data loading ──────────────────────────────────────────────────────────────
@@ -93,6 +95,7 @@ TEAM_COLORS = {
     team_num: _TERRAIN_DB.get('team_colors', {}).get(str(team_num), default_color)
     for team_num, default_color in _DEFAULT_TEAM_COLORS.items()
 }
+APP_BACKGROUND_COLOR = '#4C4A55'
 
 # Load BXZ buff parameters from landInfo.json
 def _load_buff_parameters():
@@ -427,6 +430,7 @@ class Team:
         self._seg_path_nodes = []      # Canonical added path nodes per segment (future edit/replay support)
         self._seg_end_positions = []   # Final segment endpoint after portal/teleport resolution
         self._seg_action_sequence = [] # Track order of actions: [('new', hex), ('jump', hex), ...]
+        self._seg_action_orders = []  # Cross-team sequence number for right-side symbol ordering
         self._seg_hex_costs = []  # Track per-hex costs [food_per_hex, reward_per_hex, ...] for proper allocation
         self._seg_is_fly_skill = []  # Track which segments are fly skill moves (for undo)
         self._seg_fly_skill_deltas = []  # Per-segment delta applied to global fly skill limit
@@ -470,6 +474,7 @@ class PathfindingDemo:
         self._breathing_timer = None  # Timer for breathing animation on active team marker
         self._breathing_phase = 0.0  # Tracks animation time for breathing effect
         self.fly_skill_limit = 1  # Global fly skill limit shared by all teams (starts at 1, increases when taking bigBoss)
+        self._next_action_order = 0
         
         self._hover_timer = None  # Timer for hover preview
         self._hover_hex = None  # Current hex being hovered
@@ -539,11 +544,13 @@ class PathfindingDemo:
         self.team_colors = dict(TEAM_COLORS)
 
         self.fig = plt.figure(figsize=(16, 10))
+        self.fig.patch.set_facecolor(APP_BACKGROUND_COLOR)
         self.fig.canvas.manager.set_window_title(
-            'Hex Grid – A* Waypoint Path – 3 Teams  |  redblobgames.com/grids/hexagons/')
+            '微信157-亡夜迫邪-远征模拟器S25')
         
         # Create main map axes - enlarged so map uses more of the window area.
         self.ax = self.fig.add_axes([0.01, 0.05, 0.905, 0.93])
+        self.ax.set_facecolor(APP_BACKGROUND_COLOR)
         
         # Create separate data window figure
         self.data_fig = plt.figure(figsize=(8, 10))
@@ -596,21 +603,26 @@ class PathfindingDemo:
         self._btn_chk_labels.on_clicked(lambda _evt: self._toggle_checkbox_state())
 
         # Prev/Next Day buttons - side by side at bottom left
-        bax_prev_day = self.fig.add_axes([0.02, 0.02, 0.09, 0.035])
+        bax_prev_day = self.fig.add_axes([0.02, 0.002, 0.084, 0.025])
         self._btn_prev_day = Button(bax_prev_day, '前一天(Q)', color='#ffe699')
-        self._btn_prev_day.label.set_fontsize(14)
+        self._btn_prev_day.label.set_fontsize(12)
         self._btn_prev_day.on_clicked(lambda _evt: self._go_previous_day())
 
-        bax_next_day = self.fig.add_axes([0.12, 0.02, 0.09, 0.035])
+        bax_next_day = self.fig.add_axes([0.11, 0.002, 0.084, 0.025])
         self._btn_next_day = Button(bax_next_day, '后一天(E)', color='#ffeb99')
-        self._btn_next_day.label.set_fontsize(14)
+        self._btn_next_day.label.set_fontsize(12)
         self._btn_next_day.on_clicked(lambda _evt: self._advance_day())
 
         # Toggle between the drawn hex grid and the real-game map screenshot
-        bax_map_view = self.fig.add_axes([0.22, 0.02, 0.09, 0.035])
+        bax_map_view = self.fig.add_axes([0.20, 0.002, 0.084, 0.025])
         self._btn_map_view = Button(bax_map_view, '切换地图', color='#c9b3ff')
         self._btn_map_view.label.set_fontsize(12)
         self._btn_map_view.on_clicked(lambda _evt: self._toggle_map_view())
+
+        bax_screenshot = self.fig.add_axes([0.29, 0.002, 0.084, 0.025])
+        self._btn_screenshot = Button(bax_screenshot, '截图', color='#d9f2ff')
+        self._btn_screenshot.label.set_fontsize(12)
+        self._btn_screenshot.on_clicked(lambda _evt: self._copy_map_screenshot())
 
         # Day/date display on right side, above the food/reward table
         self._day_number_text = self.fig.text(0.95, 0.86, self._format_day_with_date(1),
@@ -692,10 +704,14 @@ class PathfindingDemo:
         plt.show()
 
     def _format_day_with_date(self, day_num):
-        """Format map day label including date, with Day 1 fixed at 6/12."""
+        """Format day/date label with the current Tent stage from landInfo."""
         safe_day = max(1, int(day_num))
         dt = self._calendar_day1 + timedelta(days=safe_day - 1)
-        return f'Day {safe_day} ({dt.month}/{dt.day})'
+        tent_stage = 1
+        for entry in _TERRAIN_DB.get('T', {}).get('degrade', []):
+            if safe_day >= int(entry.get('day', 0)):
+                tent_stage += 1
+        return f'Day {safe_day} ({dt.month}/{dt.day}) | 帐篷{tent_stage}阶段'
 
     def _on_data_window_closed(self, _event):
         """Track when the data window is closed by the user."""
@@ -1004,6 +1020,44 @@ class PathfindingDemo:
         existing_end_positions = getattr(team, '_seg_end_positions', None)
         if existing_end_positions is None or len(existing_end_positions) != expected:
             team._seg_end_positions = [seg_nodes[-1] if seg_nodes else team.origin for seg_nodes in rebuilt]
+        self._ensure_team_segment_action_orders(team)
+
+    def _ensure_team_segment_action_orders(self, team):
+        """Keep persisted cross-team action-order entries aligned with segments."""
+        expected = len(team._seg_lengths)
+        orders = list(getattr(team, '_seg_action_orders', []))[:expected]
+        orders.extend([None] * (expected - len(orders)))
+        team._seg_action_orders = orders
+
+    def _append_segment_action_order(self, team):
+        """Assign the next global ordering slot to a newly-created segment."""
+        self._normalize_missing_action_orders()
+        self._ensure_team_segment_action_orders(team)
+        team._seg_action_orders.append(self._next_action_order)
+        self._next_action_order += 1
+
+    def _normalize_missing_action_orders(self):
+        """Give legacy segments deterministic order values before appending new ones."""
+        segments = []
+        for team_num, team in ((1, self.team1), (2, self.team2), (3, self.team3)):
+            if team is None:
+                continue
+            self._ensure_team_segment_action_orders(team)
+            for seg_idx, seg_day in enumerate(team._seg_days):
+                segments.append((int(seg_day), team_num, seg_idx, team))
+
+        existing_orders = [
+            order
+            for _day, _team_num, seg_idx, team in segments
+            for order in [team._seg_action_orders[seg_idx]]
+            if isinstance(order, int)
+        ]
+        next_order = max(existing_orders, default=-1) + 1
+        for _day, _team_num, seg_idx, team in sorted(segments):
+            if team._seg_action_orders[seg_idx] is None:
+                team._seg_action_orders[seg_idx] = next_order
+                next_order += 1
+        self._next_action_order = next_order
 
     def _get_team_segment_infos(self, team):
         """Return normalized segment descriptors for a team.
@@ -1046,7 +1100,7 @@ class PathfindingDemo:
         segment_fields = [
             '_seg_lengths', '_seg_foods', '_seg_awards', '_seg_steps', '_seg_days',
             '_seg_new_hexes', '_seg_exploration_hexes', '_seg_jumps', '_seg_path_nodes', '_seg_end_positions',
-            '_seg_action_sequence', '_seg_hex_costs', '_seg_is_fly_skill', '_seg_fly_skill_deltas',
+            '_seg_action_sequence', '_seg_action_orders', '_seg_hex_costs', '_seg_is_fly_skill', '_seg_fly_skill_deltas',
         ]
         for field_name in segment_fields:
             value = getattr(team, field_name, None)
@@ -1065,7 +1119,7 @@ class PathfindingDemo:
         return [
             '_seg_lengths', '_seg_foods', '_seg_awards', '_seg_steps', '_seg_days',
             '_seg_new_hexes', '_seg_exploration_hexes', '_seg_jumps', '_seg_path_nodes', '_seg_end_positions',
-            '_seg_action_sequence', '_seg_hex_costs', '_seg_is_fly_skill', '_seg_fly_skill_deltas',
+            '_seg_action_sequence', '_seg_action_orders', '_seg_hex_costs', '_seg_is_fly_skill', '_seg_fly_skill_deltas',
         ]
 
     def _capture_team_segment_tail(self, team, start_idx):
@@ -1519,6 +1573,7 @@ class PathfindingDemo:
         team._seg_path_nodes.insert(insert_at, nodes_b)
         team._seg_end_positions.insert(insert_at, nodes_b[-1])
         team._seg_action_sequence.insert(insert_at, action_b)
+        team._seg_action_orders.insert(insert_at, team._seg_action_orders[seg_idx])
         team._seg_hex_costs.insert(insert_at, hex_costs_b)
         team._seg_is_fly_skill.insert(insert_at, False)
         team._seg_fly_skill_deltas.insert(insert_at, 0)
@@ -2339,44 +2394,79 @@ class PathfindingDemo:
     def _draw_team_action_symbols(self):
         """Display team action symbols (lands and jumps) vertically below team buttons in map window."""
         self._team_action_ax.clear()
+        self._team_action_ax.set_facecolor(APP_BACKGROUND_COLOR)
         self._team_action_ax.set_xlim(0, 3)
         self._team_action_ax.axis('off')
         
         # Import Rectangle and Circle for drawing symbols
         from matplotlib.patches import Rectangle, Circle
         
-        # First pass: calculate max actions to determine y-axis range
-        max_actions = 0
+        # First pass: collect each movement segment independently. Sorting by
+        # its persisted global order keeps Team 1 -> Team 2 -> Team 1 actions
+        # visually interleaved in the same order they were made.
+        self._normalize_missing_action_orders()
+        action_segments = []
+        total_symbols = 0
         for team_idx, (team, team_num) in enumerate([(self.team1, 1), (self.team2, 2), (self.team3, 3)]):
             if team is None:
                 continue
-            
-            # Get action sequence for this team on current day
-            actions_today = []
             for seg_idx, seg_day in enumerate(team._seg_days):
-                if seg_day == self.current_day:
-                    actions_today.extend(team._seg_action_sequence[seg_idx])
-            
-            # Count symbols (merge consecutive jumps into one)
-            symbol_count = 0
-            i = 0
-            while i < len(actions_today):
-                if actions_today[i][0] == 'new':
-                    symbol_count += 1
-                    i += 1
-                elif actions_today[i][0] == 'jump':
-                    symbol_count += 1
-                    # Skip all consecutive jumps
-                    while i < len(actions_today) and actions_today[i][0] == 'jump':
-                        i += 1
-                else:
-                    i += 1
-            
-            max_actions = max(max_actions, symbol_count)
+                if seg_day != self.current_day:
+                    continue
+                actions = team._seg_action_sequence[seg_idx] if seg_idx < len(team._seg_action_sequence) else []
+                symbol_count = sum(1 for action_idx, action in enumerate(actions)
+                                   if action[0] in ('new', 'fly') or (action[0] == 'jump' and
+                                   (action_idx == 0 or actions[action_idx - 1][0] != 'jump')))
+                if symbol_count:
+                    action_segments.append({
+                        'order': team._seg_action_orders[seg_idx],
+                        'team_idx': team_idx,
+                        'actions': actions,
+                        'symbol_count': symbol_count,
+                    })
+                    total_symbols += symbol_count
+
+        action_segments.sort(key=lambda item: item['order'])
+
+        # A player can create adjacent path segments while continuing to jump
+        # through taken hexes. Combine that uninterrupted run into one symbol;
+        # another team's segment remains a visible ordering boundary.
+        merged_segments = []
+        for action_segment in action_segments:
+            actions = list(action_segment['actions'])
+            previous = merged_segments[-1] if merged_segments else None
+            if (
+                previous is not None
+                and previous['team_idx'] == action_segment['team_idx']
+                and previous['actions'] and actions
+                and previous['actions'][-1][0] == 'jump'
+                and actions[0][0] == 'jump'
+            ):
+                previous['actions'].extend(actions)
+                continue
+            merged_segments.append({
+                'order': action_segment['order'],
+                'team_idx': action_segment['team_idx'],
+                'actions': actions,
+            })
+
+        def _count_symbols(actions):
+            return sum(
+                1 for action_idx, action in enumerate(actions)
+                if action[0] in ('new', 'fly') or (
+                    action[0] == 'jump'
+                    and (action_idx == 0 or actions[action_idx - 1][0] != 'jump')
+                )
+            )
+
+        action_segments = merged_segments
+        for action_segment in action_segments:
+            action_segment['symbol_count'] = _count_symbols(action_segment['actions'])
+        total_symbols = sum(item['symbol_count'] for item in action_segments)
         
         # Set y-axis range based on max actions (each symbol takes 0.375 units now)
         # Ensure we can display at least 30 symbols by using a larger coordinate system
-        max_actions = max(max_actions, 30)  # Minimum 30 symbols support
+        max_actions = max(total_symbols, 30)  # Minimum 30 symbols support
         y_start = max_actions * 0.45 + 1  # Starting y position with spacing for larger symbols
         self._team_action_ax.set_ylim(0, y_start + 1)
 
@@ -2404,20 +2494,12 @@ class PathfindingDemo:
         except Exception:
             pass
         
-        # Second pass: draw symbols
-        for team_idx, (team, team_num) in enumerate([(self.team1, 1), (self.team2, 2), (self.team3, 3)]):
-            if team is None:
-                continue
-            
-            # Get action sequence for this team on current day
-            actions_today = []
-            for seg_idx, seg_day in enumerate(team._seg_days):
-                if seg_day == self.current_day:
-                    actions_today.extend(team._seg_action_sequence[seg_idx])
-            
-            # Position for each team vertically (start from top, right below buttons)
-            x_pos = x_positions[team_idx]
-            y_pos = y_start  # Start at top of symbol display area
+        # Second pass: draw segments in the global operation timeline.
+        symbols_before_segment = 0
+        for action_segment in action_segments:
+            actions_today = action_segment['actions']
+            x_pos = x_positions[action_segment['team_idx']]
+            y_pos = y_start - (symbols_before_segment * 0.375)
             
             # Draw symbols in the order they appear in actions_today
             i = 0
@@ -2445,6 +2527,28 @@ class PathfindingDemo:
                     y_pos -= 0.375  # Increased spacing for larger symbols
                     i += 1
                     
+                elif action_type == 'fly':
+                    # Horizontal kunai: ring, wrapped handle, guard, and blade.
+                    ring = Circle((x_pos - 0.105, y_pos), 0.055,
+                                  transform=self._team_action_ax.transData,
+                                  facecolor='none', edgecolor='#4a4a4a', linewidth=1.2, zorder=3)
+                    handle = Rectangle((x_pos - 0.05, y_pos - 0.037), 0.11, 0.074,
+                                       transform=self._team_action_ax.transData,
+                                       facecolor='#6c4b32', edgecolor='#2d2118', linewidth=0.8, zorder=3)
+                    guard = Rectangle((x_pos + 0.052, y_pos - 0.075), 0.022, 0.15,
+                                      transform=self._team_action_ax.transData,
+                                      facecolor='#d4a72c', edgecolor='#72550d', linewidth=0.7, zorder=4)
+                    blade = Polygon(
+                        [(x_pos + 0.07, y_pos - 0.09), (x_pos + 0.07, y_pos + 0.09),
+                         (x_pos + 0.22, y_pos)],
+                        transform=self._team_action_ax.transData,
+                        facecolor='#bfc7cc', edgecolor='#40484d', linewidth=0.8, zorder=3,
+                    )
+                    for patch in (ring, handle, guard, blade):
+                        self._team_action_ax.add_patch(patch)
+                    y_pos -= 0.375
+                    i += 1
+
                 elif action_type == 'jump':
                     # Count consecutive jumps starting from current position
                     jump_count = 1
@@ -2471,6 +2575,8 @@ class PathfindingDemo:
                     i = j
                 else:
                     i += 1
+
+            symbols_before_segment += action_segment['symbol_count']
 
     def _draw_map_stats_table(self):
         """Display food left and cumulated reward table above team buttons in map window."""
@@ -2651,6 +2757,7 @@ class PathfindingDemo:
         team._seg_path_nodes.append([])
         team._seg_end_positions.append(current_pos)
         team._seg_action_sequence.append([('new', current_pos)])
+        self._append_segment_action_order(team)
         team._seg_hex_costs.append([(challenge_food, reward, 1)])
         team._seg_is_fly_skill.append(False)
         team._seg_fly_skill_deltas.append(0)
@@ -2969,6 +3076,7 @@ class PathfindingDemo:
         exploration_hexes_undone = self.active_team._seg_exploration_hexes.pop()
         jumps_undone = self.active_team._seg_jumps.pop() if self.active_team._seg_jumps else []
         action_sequence_undone = self.active_team._seg_action_sequence.pop() if self.active_team._seg_action_sequence else []
+        action_order_undone = self.active_team._seg_action_orders.pop() if self.active_team._seg_action_orders else None
         seg_path_nodes_undone = self.active_team._seg_path_nodes.pop() if self.active_team._seg_path_nodes else []
         seg_end_pos_undone = self.active_team._seg_end_positions.pop() if self.active_team._seg_end_positions else None
         hex_costs_undone = self.active_team._seg_hex_costs.pop()
@@ -3201,6 +3309,86 @@ class PathfindingDemo:
             self._status_msg = '已切换到六边形地图'
         self._draw()
 
+    def _copy_map_screenshot(self):
+        """Copy the information layout to the clipboard without UI buttons."""
+        try:
+            self.fig.canvas.draw()
+            image = np.asarray(self.fig.canvas.buffer_rgba()).copy()
+            canvas_height, canvas_width = image.shape[:2]
+
+            # Keep map, date, statistics, and action symbols, but remove every
+            # interactive button from the captured canvas.
+            button_names = (
+                '_btn_undo', '_btn_reset', '_btn_fly', '_btn_show_future',
+                '_btn_chk_labels', '_btn_prev_day', '_btn_next_day',
+                '_btn_map_view', '_btn_screenshot', '_btn_load', '_btn_save',
+                '_btn_global_stat', '_btn_edit_seg', '_btn_export_xlsx',
+            )
+            button_mask_padding = 3
+            for button_name in button_names:
+                button = getattr(self, button_name, None)
+                if button is None:
+                    continue
+                bbox = button.ax.get_window_extent()
+                left = max(0, int(np.floor(bbox.x0)) - button_mask_padding)
+                right = min(canvas_width, int(np.ceil(bbox.x1)) + button_mask_padding)
+                top = max(0, canvas_height - int(np.ceil(bbox.y1)) - button_mask_padding)
+                bottom = min(canvas_height, canvas_height - int(np.floor(bbox.y0)) + button_mask_padding)
+                rgb = tuple(int(channel * 255) for channel in hex2color(APP_BACKGROUND_COLOR))
+                image[top:bottom, left:right] = (*rgb, 255)
+
+            height, width = image.shape[:2]
+            # CF_DIB expects bottom-up BGRA pixel order.
+            bgra = np.flipud(image[:, :, [2, 1, 0, 3]]).tobytes()
+            header = struct.pack(
+                '<IiiHHIIiiII',
+                40, width, height, 1, 32, 0, len(bgra), 0, 0, 0, 0,
+            )
+            clipboard_data = header + bgra
+
+            kernel32 = ctypes.windll.kernel32
+            user32 = ctypes.windll.user32
+            kernel32.GlobalAlloc.argtypes = [ctypes.c_uint, ctypes.c_size_t]
+            kernel32.GlobalAlloc.restype = ctypes.c_void_p
+            kernel32.GlobalFree.argtypes = [ctypes.c_void_p]
+            kernel32.GlobalFree.restype = ctypes.c_void_p
+            kernel32.GlobalLock.argtypes = [ctypes.c_void_p]
+            kernel32.GlobalLock.restype = ctypes.c_void_p
+            kernel32.GlobalUnlock.argtypes = [ctypes.c_void_p]
+            kernel32.GlobalUnlock.restype = ctypes.c_int
+            user32.OpenClipboard.argtypes = [ctypes.c_void_p]
+            user32.OpenClipboard.restype = ctypes.c_int
+            user32.EmptyClipboard.restype = ctypes.c_int
+            user32.SetClipboardData.argtypes = [ctypes.c_uint, ctypes.c_void_p]
+            user32.SetClipboardData.restype = ctypes.c_void_p
+            user32.CloseClipboard.restype = ctypes.c_int
+            handle = kernel32.GlobalAlloc(0x0002, len(clipboard_data))
+            if not handle:
+                raise RuntimeError('Could not allocate clipboard memory.')
+            pointer = kernel32.GlobalLock(handle)
+            if not pointer:
+                kernel32.GlobalFree(handle)
+                raise RuntimeError('Could not lock clipboard memory.')
+            ctypes.memmove(pointer, clipboard_data, len(clipboard_data))
+            kernel32.GlobalUnlock(handle)
+
+            if not user32.OpenClipboard(None):
+                kernel32.GlobalFree(handle)
+                raise RuntimeError('Clipboard is currently unavailable.')
+            try:
+                user32.EmptyClipboard()
+                if not user32.SetClipboardData(8, handle):  # CF_DIB
+                    kernel32.GlobalFree(handle)
+                    raise RuntimeError('Could not write image to clipboard.')
+                handle = None  # Clipboard owns this memory after SetClipboardData.
+            finally:
+                user32.CloseClipboard()
+
+            self._status_msg = '地图截图已复制到剪切板。'
+        except Exception as e:
+            self._status_msg = f'截图失败: {e}'
+        self._draw()
+
     def _reset_path(self):
         self._clear_hover_preview()  # Clear preview on reset
         
@@ -3214,6 +3402,7 @@ class PathfindingDemo:
         self._fly_mode = False  # Reset fly skill mode
         self._has_zoomed = False  # Reset zoom state
         self.fly_skill_limit = 1  # Reset global fly skill limit to 1
+        self._next_action_order = 0
         
         # Reset shared state
         self.all_visited_hexes = {team1_origin}
@@ -3279,6 +3468,7 @@ class PathfindingDemo:
                     '_seg_path_nodes': [[list(h) for h in seg] for seg in team._seg_path_nodes],
                     '_seg_end_positions': [list(h) for h in team._seg_end_positions],
                     '_seg_action_sequence': [[(action, list(h) if isinstance(h, tuple) else h) for action, h in seg] for seg in team._seg_action_sequence],
+                    '_seg_action_orders': team._seg_action_orders,
                     '_seg_lengths': team._seg_lengths,
                     '_seg_hex_costs': team._seg_hex_costs,
                     '_seg_is_fly_skill': team._seg_is_fly_skill,
@@ -3862,6 +4052,7 @@ class PathfindingDemo:
                     '_seg_path_nodes': [[list(h) for h in seg] for seg in team._seg_path_nodes],
                     '_seg_end_positions': [list(h) for h in team._seg_end_positions],
                     '_seg_action_sequence': [[(action, list(h) if isinstance(h, tuple) else h) for action, h in seg] for seg in team._seg_action_sequence],
+                    '_seg_action_orders': team._seg_action_orders,
                     '_seg_lengths': team._seg_lengths,
                     '_seg_hex_costs': team._seg_hex_costs,
                     '_seg_is_fly_skill': team._seg_is_fly_skill,
@@ -3961,6 +4152,7 @@ class PathfindingDemo:
                 team._seg_end_positions = [tuple(h) for h in team_data.get('_seg_end_positions', [])]
                 team._seg_action_sequence = [[(action, tuple(h) if isinstance(h, (list, tuple)) else h) for action, h in seg] for seg in team_data.get('_seg_action_sequence', [])]
                 team._seg_lengths = team_data['_seg_lengths']
+                team._seg_action_orders = team_data.get('_seg_action_orders', [None] * len(team._seg_lengths))
                 team._seg_hex_costs = team_data['_seg_hex_costs']
                 team._seg_is_fly_skill = team_data['_seg_is_fly_skill']
                 team._seg_fly_skill_deltas = team_data.get('_seg_fly_skill_deltas', [0] * len(team._seg_lengths))
@@ -3980,6 +4172,13 @@ class PathfindingDemo:
             self._ensure_team_segment_path_nodes(self.team1)
             self._ensure_team_segment_path_nodes(self.team2)
             self._ensure_team_segment_path_nodes(self.team3)
+            saved_orders = [
+                order
+                for team in (self.team1, self.team2, self.team3) if team is not None
+                for order in team._seg_action_orders
+                if isinstance(order, int)
+            ]
+            self._next_action_order = max(saved_orders, default=-1) + 1
             self.all_visited_hexes = set(tuple(h) for h in game_state['all_visited_hexes'])
             self.visited_g_lands = set(tuple(h) for h in game_state['visited_g_lands'])
             self.day_records = game_state['day_records']
@@ -4498,7 +4697,10 @@ class PathfindingDemo:
                     self.active_team._seg_jumps.append([])  # No jumps for fly skill
                     self.active_team._seg_path_nodes.append([pos])
                     self.active_team._seg_end_positions.append(pos)
-                    self.active_team._seg_action_sequence.append([('new', h) for h in captured])
+                    self.active_team._seg_action_sequence.append(
+                        [('fly', pos)] + [('new', h) for h in captured]
+                    )
+                    self._append_segment_action_order(self.active_team)
                     self.active_team._seg_hex_costs.append(
                         ([(dep_food, dep_award, 1)] if is_leaving_exploration else [])
                         + [(landing_food, landing_award, 0)])
@@ -4868,6 +5070,7 @@ class PathfindingDemo:
             self.active_team._seg_path_nodes.append(added.copy())
             self.active_team._seg_end_positions.append(added[-1] if added else current_pos)
             self.active_team._seg_action_sequence.append(action_sequence.copy())
+            self._append_segment_action_order(self.active_team)
             self.active_team._seg_hex_costs.append(hex_costs.copy())
             self.active_team._seg_is_fly_skill.append(False)  # Normal pathfinding, not fly skill
             self.active_team._seg_fly_skill_deltas.append(0)
@@ -5244,6 +5447,7 @@ class PathfindingDemo:
             saved_ylim = self.ax.get_ylim()
         
         self.ax.clear()
+        self.ax.set_facecolor(APP_BACKGROUND_COLOR)
 
         # ax.clear() just destroyed every artist that was in the axes, including
         # any live hover-preview line - but it doesn't know about (and can't null

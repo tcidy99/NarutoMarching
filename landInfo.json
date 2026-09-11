@@ -409,5 +409,10 @@
   "season": {
     "start_date": "2026-09-11",
     "duration_days": 97
+    },
+    "team_colors": {
+        "1": "#000000",
+        "2": "#FF0000",
+        "3": "#87CEFA"
   }
 }

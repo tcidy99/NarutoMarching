@@ -84,6 +84,16 @@ _SEASON = _TERRAIN_DB.get('season', {})
 TOTAL_DAYS = _SEASON.get('duration_days', 90)
 CALENDAR_DAY1 = date(*(int(p) for p in _SEASON.get('start_date', '2026-06-12').split('-')))
 
+_DEFAULT_TEAM_COLORS = {
+    1: '#000000',
+    2: '#FF0000',
+    3: '#87CEFA',
+}
+TEAM_COLORS = {
+    team_num: _TERRAIN_DB.get('team_colors', {}).get(str(team_num), default_color)
+    for team_num, default_color in _DEFAULT_TEAM_COLORS.items()
+}
+
 # Load BXZ buff parameters from landInfo.json
 def _load_buff_parameters():
     """Load B, X, Z buff parameters from landInfo.json"""
@@ -526,11 +536,7 @@ class PathfindingDemo:
         self._init_day_records()
         
         # Team colors
-        self.team_colors = {
-            1: '#38BBED',  # Light blue
-            2: '#92C73E',  # Green
-            3: '#E74C3C',  # Red
-        }
+        self.team_colors = dict(TEAM_COLORS)
 
         self.fig = plt.figure(figsize=(16, 10))
         self.fig.canvas.manager.set_window_title(
@@ -642,19 +648,19 @@ class PathfindingDemo:
 
         # Add three team switch buttons at right side, just above symbol display area
         bax_team1 = self.fig.add_axes([0.909, 0.735, 0.022, 0.025])
-        self._btn_team1 = Button(bax_team1, 'T1', color='#38BBED')
+        self._btn_team1 = Button(bax_team1, 'T1', color=self.team_colors[1])
         self._btn_team1.label.set_fontsize(17)
         self._btn_team1.label.set_color('#FFFF00')
         self._btn_team1.on_clicked(lambda _evt: self._on_team_button_click(1))
 
         bax_team2 = self.fig.add_axes([0.937, 0.735, 0.022, 0.025])
-        self._btn_team2_switch = Button(bax_team2, 'T2', color='#92C73E')
+        self._btn_team2_switch = Button(bax_team2, 'T2', color=self.team_colors[2])
         self._btn_team2_switch.label.set_fontsize(17)
         self._btn_team2_switch.label.set_color('#FFFF00')
         self._btn_team2_switch.on_clicked(lambda _evt: self._on_team_button_click(2))
 
         bax_team3 = self.fig.add_axes([0.965, 0.735, 0.022, 0.025])
-        self._btn_team3_switch = Button(bax_team3, 'T3', color='#E74C3C')
+        self._btn_team3_switch = Button(bax_team3, 'T3', color=self.team_colors[3])
         self._btn_team3_switch.label.set_fontsize(17)
         self._btn_team3_switch.label.set_color('#FFFF00')
         self._btn_team3_switch.on_clicked(lambda _evt: self._on_team_button_click(3))
@@ -952,8 +958,10 @@ class PathfindingDemo:
             self._on_team_button_click(team_num)
         elif event.key.lower() == 'q':
             self._go_previous_day()
+            self.fig.canvas.draw()
         elif event.key.lower() == 'e':
             self._advance_day()
+            self.fig.canvas.draw()
         elif event.key.lower() == 'x':
             self._export_day_sheets_xlsx()
 
@@ -2578,6 +2586,94 @@ class PathfindingDemo:
             for seg_new in team._seg_new_hexes
             for h in seg_new
         )
+
+    def _confirm_settle_current_exploration(self):
+        """Ask whether to occupy the active team's current probe hex."""
+        team = self.active_team
+        if team is None or not team.full_path:
+            return False
+
+        current_pos = team.full_path[-1]
+        if current_pos not in team.free_exploration_hexes or self._is_hex_settled(current_pos):
+            return False
+
+        steps_available = self._get_team_steps_for_day(team, self.current_day)
+        if steps_available <= 0:
+            return False
+
+        try:
+            import tkinter as tk
+            from tkinter import messagebox
+
+            root = tk.Tk()
+            root.withdraw()
+            root.lift()
+            root.attributes('-topmost', True)
+            root.update()
+            confirmed = messagebox.askyesno(
+                '占领试探地块',
+                f'是否占领当前试探地块 ({current_pos[0]}, {current_pos[1]})？\n\n'
+                f'需要 1 step，并结算该地块的奖励与消耗。'
+            )
+            root.destroy()
+        except Exception:
+            confirmed = True
+
+        if not confirmed:
+            return True
+
+        terrain = _terrain(*current_pos)
+        challenge_food = _apply_challenge_discounts(
+            _get_terrain_food(terrain, self.current_day),
+            team,
+            self._are_all_g_lands_visited(),
+            is_tent=terrain.get('name') == 'Tent',
+        )
+        reward = terrain.get('award', 0)
+        if team.z_bonus_remaining > 0:
+            reward = _apply_z_bonus(reward, team)
+
+        if self.current_food < challenge_food:
+            self._status_msg = self._build_not_enough_food_message(
+                challenge_food, steps_available
+            )
+            self._draw()
+            return True
+
+        team._seg_lengths.append(0)
+        team._seg_foods.append(challenge_food)
+        team._seg_awards.append(reward)
+        team._seg_steps.append(1)
+        team._seg_days.append(self.current_day)
+        team._seg_new_hexes.append([current_pos])
+        team._seg_exploration_hexes.append([])
+        team._seg_jumps.append([])
+        team._seg_path_nodes.append([])
+        team._seg_end_positions.append(current_pos)
+        team._seg_action_sequence.append([('new', current_pos)])
+        team._seg_hex_costs.append([(challenge_food, reward, 1)])
+        team._seg_is_fly_skill.append(False)
+        team._seg_fly_skill_deltas.append(0)
+
+        team.free_exploration_hexes.discard(current_pos)
+        team.visited_hexes.add(current_pos)
+        self.all_visited_hexes.add(current_pos)
+        if current_pos in self.all_g_lands:
+            self.visited_g_lands.add(current_pos)
+
+        self.current_food -= challenge_food
+        self.total_food += challenge_food
+        self.total_reward += reward
+        team.steps -= 1
+        self._status_msg = (
+            f'已占领试探地块 ({current_pos[0]},{current_pos[1]})。'
+            f'消耗 1 step，获得奖励 {reward}。'
+        )
+        self._status_msg += self._activate_land_buffs(current_pos)
+        self._rebuild_day_records()
+        self._auto_save_game()
+        self._draw()
+        return True
 
     def _activate_land_buffs(self, hex_pos):
         """Start the X/B/Z buff granted by capturing hex_pos (if it is one of
@@ -4522,6 +4618,8 @@ class PathfindingDemo:
 
             current = self.active_team.full_path[-1]
             if pos == current:
+                if self._confirm_settle_current_exploration():
+                    return
                 return
 
             segment, cost_map = _astar(current, pos, set())

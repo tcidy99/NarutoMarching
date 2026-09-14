@@ -282,6 +282,33 @@ def _center(ir, ic):
     return x, y
 
 
+def _quarter_circle_arc(x0, y0, x1, y1, n=16):
+    """Points along a 90-degree circular arc from (x0,y0) to (x1,y1), bulging
+    to a fixed side of the travel direction (consistent curve orientation for
+    every jump edge, so back-and-forth jumps over the same pair of hexes draw
+    as mirrored arcs rather than overlapping straight lines).
+
+    For a chord of length L subtending a 90-degree angle at the circle's
+    center, radius r = L / sqrt(2) and the center sits exactly L/2 out along
+    the chord's perpendicular bisector - both follow directly from the
+    isosceles right triangle formed by the center and the two chord endpoints.
+    """
+    dx, dy = x1 - x0, y1 - y0
+    length = np.hypot(dx, dy)
+    if length < 1e-9:
+        return np.array([x0, x1]), np.array([y0, y1])
+    ux, uy = dx / length, dy / length
+    nx, ny = -uy, ux  # unit normal, rotated 90 deg CCW from travel direction
+    mx, my = (x0 + x1) / 2.0, (y0 + y1) / 2.0
+    cx, cy = mx + nx * (length / 2.0), my + ny * (length / 2.0)
+    a0 = np.arctan2(y0 - cy, x0 - cx)
+    a1 = np.arctan2(y1 - cy, x1 - cx)
+    sweep = (a1 - a0 + np.pi) % (2 * np.pi) - np.pi  # shortest signed turn, always ~+-90 deg here
+    angles = a0 + np.linspace(0.0, sweep, n)
+    radius = length / np.sqrt(2.0)
+    return cx + radius * np.cos(angles), cy + radius * np.sin(angles)
+
+
 def _neighbors(ir, ic):
     """
     Six hex neighbours in internal (0-based) offset coordinates.
@@ -1291,8 +1318,22 @@ class PathfindingDemo:
             )
             return False
 
-        # Re-attach untouched future days and rebuild shared derived state.
+        # Re-attach untouched future days, re-derive every later segment's
+        # capture/revisit bookkeeping against the redrawn route (see
+        # _recost_segments_from_day), then rebalance and rebuild shared state.
+        tail_start = len(team._seg_days)
         self._append_team_segment_payload(team, ctx['pending_future_payload'])
+        # The re-attached tail logically follows the redraw, so give it fresh
+        # cross-team order ids (its stored ones predate the redraw).
+        self._normalize_missing_action_orders()
+        self._ensure_team_segment_action_orders(team)
+        for j in range(tail_start, len(team._seg_days)):
+            team._seg_action_orders[j] = self._next_action_order
+            self._next_action_order += 1
+        self._recost_segments_from_day(day)
+        for t in (self.team1, self.team2, self.team3):
+            if t is not None:
+                self._derive_team_buff_state(t)
         self._rebalance_all_teams_from_day(day)
         self._rebuild_shared_derived_state_from_segments()
         self._rebuild_day_records()
@@ -1839,6 +1880,185 @@ class PathfindingDemo:
             self._status_msg = 'No day selected. Click segment paths on any days to select edit range.'
 
         self._draw()
+
+    def _recost_segments_from_day(self, start_day):
+        """Re-derive per-hex bookkeeping for every segment on/after start_day.
+
+        A segment's records (which hexes were fresh captures vs. 10-food revisits,
+        and the resulting food/score/steps) are computed when the move is made
+        and stored. A route edit deletes and redraws earlier segments, so the
+        untouched later segments - and other teams' segments - can be stale:
+        a hex the redraw now captures is still recorded as a fresh capture later
+        (scored twice), and a hex the redraw no longer captures stays recorded as
+        a revisit where a later day actually walked onto it first (never scored).
+
+        Segments are replayed in chronological order (each team's own array
+        order, interleaved across teams by day then action order). For a
+        replayed segment, entries whose kind still matches keep their stored
+        cost (preserving any B/Z buff applied at the time); entries that change
+        kind are re-priced with the base rules.
+        """
+        import types
+        teams = [t for t in (self.team1, self.team2, self.team3) if t is not None]
+        if not teams:
+            return
+        self._normalize_missing_action_orders()
+        for team in teams:
+            self._ensure_team_segment_path_nodes(team)
+
+        start_day = int(start_day)
+        captured = {self.team1.origin}
+        visited_g = {self.team1.origin} & self.all_g_lands
+        # Probe / deferred-fly hexes nobody has paid for yet. Tracked globally:
+        # whichever team is standing on one when it leaves settles it - its own
+        # probe, a deferred fly landing, or a team created on top of it.
+        unsettled = set()
+        pos_by_team = {team: team.origin for team in teams}
+        no_buff = types.SimpleNamespace(b_discount_remaining=0)
+
+        def all_g():
+            return len(visited_g) == len(self.all_g_lands) and len(self.all_g_lands) > 0
+
+        def note(hex_pos):
+            if hex_pos in self.all_g_lands:
+                visited_g.add(hex_pos)
+
+        def fresh_capture(hex_pos, seg_day, is_fly):
+            t = _terrain(*hex_pos)
+            challenge = _apply_challenge_discounts(
+                _get_terrain_food(t, seg_day), no_buff, all_g(), is_tent=t.get('name') == 'Tent')
+            if is_fly:
+                movement = 0
+                step = t.get('step', 1)
+                steps = step if step < 0 else 0
+            else:
+                movement = _apply_g_reduction(50, all_g())
+                steps = t.get('step', 1)
+            return (movement + challenge, t['award'], steps)
+
+        def fresh_settle(hex_pos, seg_day):
+            t = _terrain(*hex_pos)
+            challenge = _apply_challenge_discounts(
+                _get_terrain_food(t, seg_day), no_buff, all_g(), is_tent=t.get('name') == 'Tent')
+            return (challenge, t['award'], 1)
+
+        def is_portal(hex_pos):
+            token = RAW_MAP[hex_pos[0]][hex_pos[1]] if 0 <= hex_pos[0] < ROWS and 0 <= hex_pos[1] < COLS else ''
+            return bool(re.fullmatch(r'P\d+', token))
+
+        # Chronological merge: team-internal order is authoritative; across teams
+        # interleave by (day, action order).
+        idx = {team: 0 for team in teams}
+        order = []
+        while True:
+            best = None
+            for team in teams:
+                i = idx[team]
+                if i >= len(team._seg_days):
+                    continue
+                key = (int(team._seg_days[i]), team._seg_action_orders[i] if i < len(team._seg_action_orders) and isinstance(team._seg_action_orders[i], int) else 0)
+                if best is None or key < best[0]:
+                    best = (key, team)
+            if best is None:
+                break
+            order.append((best[1], idx[best[1]]))
+            idx[best[1]] += 1
+
+        for team, i in order:
+            seg_day = int(team._seg_days[i])
+            nodes = [tuple(h) for h in team._seg_path_nodes[i]]
+            dep = pos_by_team[team]
+            end_pos = tuple(team._seg_end_positions[i]) if i < len(team._seg_end_positions) and team._seg_end_positions[i] is not None else (nodes[-1] if nodes else dep)
+
+            if seg_day < start_day:
+                # Untouched history: apply its stored effects to the running state.
+                for h in team._seg_new_hexes[i]:
+                    captured.add(tuple(h)); note(tuple(h))
+                for h in team._seg_exploration_hexes[i]:
+                    unsettled.add(tuple(h)); note(tuple(h))
+                unsettled -= captured
+                pos_by_team[team] = end_pos
+                continue
+
+            is_fly = bool(team._seg_is_fly_skill[i]) if i < len(team._seg_is_fly_skill) else False
+            stored_costs = list(team._seg_hex_costs[i]) if i < len(team._seg_hex_costs) else []
+            stored_new = {tuple(h) for h in team._seg_new_hexes[i]}
+            stored_jump = {tuple(h) for h in team._seg_jumps[i]} if i < len(team._seg_jumps) else set()
+            stored_expl = {tuple(h) for h in team._seg_exploration_hexes[i]}
+            prefix = max(0, len(stored_costs) - len(nodes))
+
+            entries = []      # (food, award, steps)
+            new_hexes, jumps, explores, actions = [], [], [], []
+            fly_delta = -1 if is_fly else 0
+
+            # Leaving (or settling in place on) a still-unsettled exploration hex
+            # settles it now; if someone captured it in the meantime, nothing to pay.
+            settle_hex = dep if (dep in unsettled or (not nodes and dep in stored_new)) else None
+            if settle_hex is not None and settle_hex not in captured:
+                entry = stored_costs[0] if (prefix > 0 and dep in stored_new) else fresh_settle(dep, seg_day)
+                entries.append(tuple(entry))
+                new_hexes.append(dep); actions.append(('new', dep))
+                captured.add(dep); note(dep)
+                if _terrain(*dep).get('name') == 'bigBoss':
+                    fly_delta += 1
+            elif not nodes and dep in stored_new:
+                entries.append((0, 0, 0))  # in-place settle of a hex already taken by someone else
+            unsettled.discard(dep)
+
+            if is_fly and nodes:
+                actions.insert(0, ('fly', nodes[-1]))
+
+            seen_in_seg = set()
+            for k, h in enumerate(nodes):
+                stored = tuple(stored_costs[prefix + k]) if prefix + k < len(stored_costs) else None
+                if h in stored_expl:
+                    kind = 'explore'
+                elif h in stored_new:
+                    kind = 'new'
+                elif h in stored_jump:
+                    kind = 'jump'
+                else:
+                    kind = 'new' if stored and stored[1] else 'jump'
+
+                if is_portal(h):
+                    # Portal bookkeeping is handled by the teleport logic; keep as stored.
+                    entries.append(stored or (0, 0, 0))
+                    if kind == 'new':
+                        new_hexes.append(h); actions.append(('new', h)); captured.add(h); note(h)
+                    elif kind == 'jump':
+                        jumps.append(h); actions.append(('jump', h))
+                    seen_in_seg.add(h)
+                    continue
+
+                taken = h in captured or h in seen_in_seg
+                if kind == 'explore' and not taken:
+                    # A deferred landing charges nothing up front - walking waives
+                    # nothing (flat movement fee), but flying waives it entirely.
+                    fresh_explore_cost = 0 if is_fly else _apply_g_reduction(50, all_g())
+                    entries.append(stored or (fresh_explore_cost, 0, 0))
+                    explores.append(h); unsettled.add(h); note(h)
+                elif taken:
+                    entries.append(stored if (kind == 'jump' and stored) else (_apply_g_reduction(10, all_g()), 0, 0))
+                    jumps.append(h); actions.append(('jump', h))
+                else:
+                    entry = stored if (kind == 'new' and stored) else fresh_capture(h, seg_day, is_fly)
+                    entries.append(tuple(entry))
+                    new_hexes.append(h); actions.append(('new', h)); captured.add(h); note(h)
+                    if _terrain(*h).get('name') == 'bigBoss':
+                        fly_delta += 1
+                seen_in_seg.add(h)
+
+            team._seg_hex_costs[i] = entries
+            team._seg_foods[i] = sum(e[0] for e in entries)
+            team._seg_awards[i] = sum(e[1] for e in entries)
+            team._seg_steps[i] = sum(e[2] for e in entries)
+            team._seg_new_hexes[i] = new_hexes
+            team._seg_jumps[i] = jumps
+            team._seg_exploration_hexes[i] = explores
+            team._seg_action_sequence[i] = actions
+            if i < len(team._seg_fly_skill_deltas):
+                team._seg_fly_skill_deltas[i] = fly_delta
+            pos_by_team[team] = end_pos
 
     def _rebuild_shared_derived_state_from_segments(self):
         """Replay segment history to reconstruct shared derived runtime state.
@@ -2698,6 +2918,28 @@ class PathfindingDemo:
             for h in seg_new
         )
 
+    def _confirm_free_exploration_step(self, hex_pos):
+        """Ask before a probe step ("蹭步"), which the team can only make because
+        it has run out of steps for the day. Returns True to go ahead."""
+        try:
+            import tkinter as tk
+            from tkinter import messagebox
+
+            root = tk.Tk()
+            root.withdraw()
+            root.lift()
+            root.attributes('-topmost', True)
+            root.update()
+            confirmed = messagebox.askyesno(
+                '蹭步确认',
+                f'队伍今日步数已用完，下一步到 ({hex_pos[0]}, {hex_pos[1]}) 是蹭步。\n\n'
+                f'是否继续？'
+            )
+            root.destroy()
+        except Exception:
+            confirmed = True
+        return confirmed
+
     def _confirm_settle_current_exploration(self):
         """Ask whether to occupy the active team's current probe hex."""
         team = self.active_team
@@ -2765,7 +3007,11 @@ class PathfindingDemo:
         self._append_segment_action_order(team)
         team._seg_hex_costs.append([(challenge_food, reward, 1)])
         team._seg_is_fly_skill.append(False)
-        team._seg_fly_skill_deltas.append(0)
+        # Capturing a BigBoss grants +1 fly skill, whether it is captured by
+        # walking onto it or settled in place here.
+        boss_delta = 1 if terrain.get('name') == 'bigBoss' else 0
+        team._seg_fly_skill_deltas.append(boss_delta)
+        self.fly_skill_limit += boss_delta
 
         team.free_exploration_hexes.discard(current_pos)
         team.visited_hexes.add(current_pos)
@@ -2781,11 +3027,60 @@ class PathfindingDemo:
             f'已占领试探地块 ({current_pos[0]},{current_pos[1]})。'
             f'消耗 1 step，获得奖励 {reward}。'
         )
+        if boss_delta:
+            self._status_msg += f' ⭐ Reached BigBoss! Fly skill +1 (now {self.fly_skill_limit})'
         self._status_msg += self._activate_land_buffs(current_pos)
         self._rebuild_day_records()
         self._auto_save_game()
         self._draw()
         return True
+
+    def _derive_team_buff_state(self, team):
+        """Recompute a team's X/B/Z buff counters by replaying its segment
+        history, mirroring how moves consume and (re)activate them: a segment's
+        fresh captures consume one B/Z charge each, captures whose step cost
+        was waived consume one X charge each (not on fly moves), and capturing
+        an X/B/Z land - as the segment's final hex or as a hex settled on
+        departure - resets that buff to its full count."""
+        x = b = z = 0
+        xn = bn = zn = None
+        for i in range(len(team._seg_days)):
+            new_hexes = [tuple(h) for h in team._seg_new_hexes[i]]
+            nodes = [tuple(h) for h in team._seg_path_nodes[i]] if i < len(team._seg_path_nodes) else []
+            costs = team._seg_hex_costs[i] if i < len(team._seg_hex_costs) else []
+            is_fly = bool(team._seg_is_fly_skill[i]) if i < len(team._seg_is_fly_skill) else False
+            prefix = max(0, len(costs) - len(nodes))
+            if x > 0 and not is_fly:
+                waived = sum(
+                    1 for k, h in enumerate(nodes)
+                    if h in new_hexes and prefix + k < len(costs) and len(costs[prefix + k]) >= 3
+                    and costs[prefix + k][2] == 0 and _terrain(*h).get('step', 1) > 0
+                )
+                x = max(0, x - waived)
+            if new_hexes:
+                if b > 0:
+                    b = max(0, b - len(new_hexes))
+                if z > 0:
+                    z = max(0, z - len(new_hexes))
+            candidates = []
+            if prefix > 0 and new_hexes and new_hexes[0] not in nodes:
+                candidates.append(new_hexes[0])          # settled on departure
+            end = team._seg_end_positions[i] if i < len(team._seg_end_positions) and team._seg_end_positions[i] is not None else (nodes[-1] if nodes else None)
+            if end is not None and tuple(end) in new_hexes:
+                candidates.append(tuple(end))            # captured as the final hex
+            elif not nodes and new_hexes:
+                candidates.append(new_hexes[0])          # in-place settle
+            for h in candidates:
+                name = RAW_MAP[h[0]][h[1]]
+                if name in X_BONUS_MAP:
+                    x, xn = X_BONUS_MAP[name], name
+                elif name in B_DISCOUNT_MAP:
+                    b, bn = B_DISCOUNT_MAP[name], name
+                elif name in Z_BONUS_MAP:
+                    z, zn = Z_BONUS_MAP[name], name
+        team.x_bonus_remaining, team.x_bonus_name = x, xn
+        team.b_discount_remaining, team.b_discount_name = b, bn
+        team.z_bonus_remaining, team.z_bonus_name = z, zn
 
     def _activate_land_buffs(self, hex_pos):
         """Start the X/B/Z buff granted by capturing hex_pos (if it is one of
@@ -2811,6 +3106,35 @@ class PathfindingDemo:
     def _are_all_g_lands_visited(self):
         """Check if all G/g lands have been visited by any team."""
         return len(self.visited_g_lands) == len(self.all_g_lands) and len(self.all_g_lands) > 0
+
+    def _find_all_g_lands_complete_day(self):
+        """Return the day the last G/g land was captured, or None if not all captured."""
+        if not self.all_g_lands:
+            return None
+
+        events = []
+        for team in (self.team1, self.team2, self.team3):
+            if team is None:
+                continue
+            for seg_idx, seg_day in enumerate(team._seg_days):
+                order = (
+                    team._seg_action_orders[seg_idx]
+                    if team._seg_action_orders and seg_idx < len(team._seg_action_orders)
+                    else 0
+                ) or 0
+                new_hexes = team._seg_new_hexes[seg_idx] if seg_idx < len(team._seg_new_hexes) else []
+                for h in new_hexes:
+                    h = tuple(h)
+                    if h in self.all_g_lands:
+                        events.append((seg_day, order, h))
+
+        events.sort(key=lambda e: (e[0], e[1]))
+        visited = set()
+        for day, _order, h in events:
+            visited.add(h)
+            if visited == self.all_g_lands:
+                return day
+        return None
 
     def _build_not_enough_food_message(self, needed_food, steps_available):
         """Build a clearer not-enough-food message with step/revisit context."""
@@ -3106,8 +3430,11 @@ class PathfindingDemo:
         # Reverse the exact fly-skill effect introduced by the undone segment.
         self.fly_skill_limit -= seg_fly_skill_delta
         
-        del self.active_team.full_path[-length:]
-        
+        # A zero-length segment (in-place settle) added no nodes; note that
+        # `del lst[-0:]` would wipe the whole list.
+        if length > 0:
+            del self.active_team.full_path[-length:]
+
         # Update shared resources
         self.total_food -= food_undone
         self.total_reward -= reward_undone
@@ -3146,20 +3473,25 @@ class PathfindingDemo:
 
         # Remove any no-draw edges that involve the removed segment
         # This cleans up portal teleport markers when undoing
-        edges_to_remove = set()
-        for edge in self.active_team._no_draw_edges:
-            # Check if either endpoint of the edge is in the removed segment
-            if edge[0] in self.active_team.full_path[-length-1:-1] or edge[1] in self.active_team.full_path[-length-1:-1]:
-                edges_to_remove.add(edge)
-        self.active_team._no_draw_edges -= edges_to_remove
+        # Exactly the edges the undone segment could have registered (fly hop,
+        # portal exit): consecutive pairs from the previous end through its
+        # nodes, plus the hop to its resolved end position. Matching on hex
+        # membership instead would also strip an earlier fly hop that this
+        # segment merely revisited.
+        prev_end = self.active_team.full_path[-1] if self.active_team.full_path else self.active_team.origin
+        nodes_undone = [tuple(h) for h in (seg_path_nodes_undone or [])]
+        chain = [prev_end] + nodes_undone
+        undone_edges = set(zip(chain[:-1], chain[1:]))
+        if seg_end_pos_undone is not None:
+            end_undone = tuple(seg_end_pos_undone)
+            undone_edges.add((prev_end, end_undone))
+            undone_edges.add((nodes_undone[-2] if len(nodes_undone) >= 2 else prev_end, end_undone))
+        self.active_team._no_draw_edges -= undone_edges
         
-        # Clear X and B bonuses when undoing (they were tied to the undone move)
-        self.active_team.x_bonus_remaining = 0
-        self.active_team.x_bonus_name = None
-        self.active_team.b_discount_remaining = 0
-        self.active_team.b_discount_name = None
-        self.active_team.z_bonus_remaining = 0
-        self.active_team.z_bonus_name = None
+        # Restore the X/B/Z buff state as it was before the undone segment
+        # (previously these were simply zeroed, which lost an active buff when
+        # undoing any move made while it was running).
+        self._derive_team_buff_state(self.active_team)
 
         fly_skill_after = self.fly_skill_limit
         x_bonus_after = self.active_team.x_bonus_remaining
@@ -3512,8 +3844,9 @@ class PathfindingDemo:
 
         cursor = 1
         for seg_idx, seg_len in enumerate(team._seg_lengths):
-            if seg_len <= 0:
-                continue
+            # Zero-length segments (e.g. in-place settling of a probe hex via the
+            # "占领试探地块" dialog) still carry a real action and must be reported;
+            # only skip once we've run past the recorded path.
             if cursor - 1 >= len(team.full_path):
                 break
 
@@ -3741,12 +4074,17 @@ class PathfindingDemo:
                 if not seg_actions and seg_end is not None:
                     seg_new_hexes = team._seg_new_hexes[seg_idx] if seg_idx < len(team._seg_new_hexes) else []
                     seg_jumps = team._seg_jumps[seg_idx] if seg_idx < len(team._seg_jumps) else []
+                    seg_explore_hexes = team._seg_exploration_hexes[seg_idx] if seg_idx < len(team._seg_exploration_hexes) else []
                     seg_new_set = {
                         tuple(h) for h in seg_new_hexes
                         if isinstance(h, (list, tuple)) and len(h) == 2
                     }
                     seg_jump_set = {
                         tuple(h) for h in seg_jumps
+                        if isinstance(h, (list, tuple)) and len(h) == 2
+                    }
+                    seg_explore_set = {
+                        tuple(h) for h in seg_explore_hexes
                         if isinstance(h, (list, tuple)) and len(h) == 2
                     }
 
@@ -3758,6 +4096,10 @@ class PathfindingDemo:
                     if not re.fullmatch(r'P\d+', token_end):
                         if seg_end in seg_jump_set:
                             entries.append({'label': '跳1', 'is_new_g': False})
+                        elif seg_end in seg_explore_set:
+                            # Probe step (试探步): the hex is not settled yet, so it
+                            # must not appear as an operation on the day it was probed.
+                            pass
                         else:
                             label_end = self._operation_label_from_token(token_end)
                             if label_end and (seg_end in seg_new_set or not seg_new_set):
@@ -3799,15 +4141,21 @@ class PathfindingDemo:
                 chosen_idx = 0
                 # If exactly one G/g is missing globally, process the segment that
                 # captures that decisive last G/g before other teams on this day.
+                # Only consider each team's own earliest still-pending segment here:
+                # a team's later segment must never jump ahead of that same team's
+                # own earlier same-day segments, or the exported action order for
+                # that team would no longer match what actually happened.
                 if len(unvisited_g) == 1:
                     decisive_pos = next(iter(unvisited_g))
-                    g_first_idx = next(
-                        (
-                            i for i, pev in enumerate(pending)
-                            if any(ent.get('g_pos') == decisive_pos for ent in pev.get('entries', []))
-                        ),
-                        None
-                    )
+                    seen_teams = set()
+                    g_first_idx = None
+                    for i, pev in enumerate(pending):
+                        if pev['team_num'] in seen_teams:
+                            continue
+                        seen_teams.add(pev['team_num'])
+                        if any(ent.get('g_pos') == decisive_pos for ent in pev.get('entries', [])):
+                            g_first_idx = i
+                            break
                     if g_first_idx is not None:
                         chosen_idx = g_first_idx
 
@@ -3903,7 +4251,7 @@ class PathfindingDemo:
             if meipass_dir and meipass_dir not in search_dirs:
                 search_dirs.append(meipass_dir)
 
-            template_names = ['S24_分表2.0_导出模板.xlsx', 'S24_分表2.0.xlsx']
+            template_names = ['S25_分表2.0_导出模板.xlsx']
             template_path = None
             for d in search_dirs:
                 for name in template_names:
@@ -3915,7 +4263,7 @@ class PathfindingDemo:
                     break
 
             if not template_path:
-                self._status_msg = 'Export error: template not found (S24_分表2.0_导出模板.xlsx / S24_分表2.0.xlsx).'
+                self._status_msg = 'Export error: template not found (S25_分表2.0_导出模板.xlsx).'
                 self._draw()
                 print(f'ERROR: template not found in: {search_dirs}')
                 try:
@@ -3929,7 +4277,7 @@ class PathfindingDemo:
                     pass
                 return
 
-            output_path = os.path.join(base_dir, 'S24_分表2.0_export.xlsx')
+            output_path = os.path.join(base_dir, 'S25_分表2.0.xlsx')
 
             wb = load_workbook(template_path)
 
@@ -3946,6 +4294,8 @@ class PathfindingDemo:
             # C..AA => 25 operation slots.
             op_start_col = 3
             op_end_col = 27
+
+            all_g_complete_day = self._find_all_g_lands_complete_day()
 
             for day in range(1, TOTAL_DAYS + 1):
                 sheet_name = str(day)
@@ -3975,6 +4325,12 @@ class PathfindingDemo:
                     row = end_action_rows[team_num]
                     key = day_record_end_key[team_num]
                     ws.cell(row=row, column=9, value=int(rec.get(key, 0)))  # Column I
+
+                # 八卦齐 (row 17): once all G/g lands have been captured, every
+                # slot from the following day onward gets the global discount.
+                if all_g_complete_day is not None and day > all_g_complete_day:
+                    for col in range(op_start_col, op_end_col + 1):
+                        ws.cell(row=17, column=col, value='是')
 
             wb.save(output_path)
 
@@ -4612,7 +4968,11 @@ class PathfindingDemo:
                             dep_award = _apply_z_bonus(dep_award, self.active_team)
 
                     # Calculate base challenge cost for destination terrain.
-                    # Fly usually waives movement food, but BigBoss still charges movement food.
+                    # Fly always waives the movement fee, including for BigBoss.
+                    # A deferred capture (defer_capture) hasn't happened yet, so
+                    # nothing is charged on landing; the challenge food is charged
+                    # later at settle time (is_leaving_exploration / in-place-settle
+                    # code paths below).
                     challenge_food = _get_terrain_food(t, self.current_day)
                     challenge_food = _apply_challenge_discounts(
                         challenge_food,
@@ -4622,13 +4982,10 @@ class PathfindingDemo:
                     )
                     if defer_capture:
                         challenge_food = 0
-                    movement_food = 0
-                    if t.get('name') == 'bigBoss':
-                        movement_food = _apply_g_reduction(50, self._are_all_g_lands_visited())
-                    seg_food = challenge_food + movement_food
+                    seg_food = challenge_food
                     self._last_landing_cost_breakdown[pos] = {
                         'challenge': challenge_food,
-                        'movement': movement_food,
+                        'movement': 0,
                         'revisit': 0,
                         'total': seg_food,
                     }
@@ -4804,14 +5161,18 @@ class PathfindingDemo:
                         self._status_msg += f' [Auto-switched to Day {self.current_day}]'
                     
                     self._rebuild_day_records()
+
+                    if self._is_active_day_edit():
+                        self._finalize_day_segment_edit_if_connected()
+
                     self._auto_save_game()  # Auto-save after fly
                     self._fly_mode = False  # Deactivate fly mode
-                    
+
                     # Stop flashing animation
                     if self._fly_button_timer is not None:
                         self._fly_button_timer.stop()
                         self._fly_button_timer = None
-                    
+
                     self._set_fly_button_border('#777777', 0.8)  # Reset button border
                     self._draw()
                     return
@@ -4873,6 +5234,12 @@ class PathfindingDemo:
                     if explore_terrain.get('step', 1) > 0:
                         if not is_leaving_exploration:
                             free_exploration = True
+
+            # Confirm before a probe step. Nothing has been mutated yet at this
+            # point, so declining just returns.
+            if free_exploration and not self._confirm_free_exploration_step(added[0]):
+                self._draw()
+                return
 
             # If leaving a free exploration hex, calculate its challenge food cost
             departure_challenge = 0
@@ -5781,8 +6148,15 @@ class PathfindingDemo:
 
                     prev_x, prev_y = _center(*prev_pos)
                     curr_x, curr_y = _center(*curr_pos)
-                    xs = [prev_x * X_SCALE, curr_x * X_SCALE]
-                    ys = [prev_y * Y_SCALE, curr_y * Y_SCALE]
+                    x0, y0 = prev_x * X_SCALE, prev_y * Y_SCALE
+                    x1, y1 = curr_x * X_SCALE, curr_y * Y_SCALE
+                    if action_type == 'jump' and is_adjacent_edge:
+                        # Jump/revisit edges curve as a quarter-circle arc between
+                        # the two hexes instead of a straight line, so a jump path
+                        # reads distinctly from a fresh-capture path at a glance.
+                        xs, ys = _quarter_circle_arc(x0, y0, x1, y1)
+                    else:
+                        xs, ys = [x0, x1], [y0, y1]
 
                     # Day boundary edge: cut solid line and use dashed connector.
                     if seg_day != prev_day_for_edge:

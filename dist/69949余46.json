@@ -2,7 +2,7 @@
   "current_day": 97,
   "current_food": 1198,
   "total_food": 159202,
-  "total_reward": 68626,
+  "total_reward": 68610,
   "fly_skill_limit": 0,
   "team1": {
     "full_path": [
@@ -31486,7 +31486,7 @@
       1000,
       520,
       0,
-      56,
+      40,
       40,
       40,
       40,
@@ -53678,7 +53678,7 @@
       [
         [
           128,
-          56,
+          40,
           1
         ]
       ],

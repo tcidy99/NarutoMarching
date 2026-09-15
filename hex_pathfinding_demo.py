@@ -526,6 +526,7 @@ class PathfindingDemo:
         self._default_ylim = None
         self._updating_scrollbar = False  # Flag to prevent feedback loops
         self._view_anim_timer = None  # Timer for smooth center-view transitions
+        self._zoom_refresh_timer = None  # Delayed route redraw after zoom settles
         
         # Find all G/g lands on the map (for 20% food reduction when all visited)
         self.all_g_lands = set()  # Positions of all G/g lands
@@ -716,6 +717,13 @@ class PathfindingDemo:
         # Team action display area (large enough for 30+ symbols)
         self._team_action_ax = self.fig.add_axes([0.91, 0.15, 0.09, 0.60])
         self._team_action_ax.axis('off')
+        self._action_symbol_hits = []
+        self._action_tooltip = self.fig.text(
+            0.0, 0.0, '', ha='left', va='bottom', fontsize=9,
+            color='#222222', visible=False,
+            bbox=dict(boxstyle='round,pad=0.35', facecolor='#fffde6', edgecolor='#777777'),
+            zorder=20,
+        )
 
         # Day stats display area (food left and cumulated reward) - above team buttons
         self._map_stats_ax = self.fig.add_axes([0.90, 0.765, 0.10, 0.08])
@@ -862,6 +870,28 @@ class PathfindingDemo:
     
     def _on_motion(self, event):
         """Handle mouse motion - track hover and show preview after 0.5s, also handle panning."""
+        if event.inaxes == self._team_action_ax and event.xdata is not None and event.ydata is not None:
+            hit = None
+            for candidate in self._action_symbol_hits:
+                if (candidate['x0'] <= event.xdata <= candidate['x1'] and
+                        candidate['y0'] <= event.ydata <= candidate['y1']):
+                    hit = candidate
+                    break
+            if hit is None:
+                self._action_tooltip.set_visible(False)
+            else:
+                fig_x, fig_y = self.fig.transFigure.inverted().transform((event.x, event.y))
+                self._action_tooltip.set_position((min(max(fig_x + 0.008, 0.0), 0.82),
+                                                   min(max(fig_y + 0.008, 0.0), 0.94)))
+                self._action_tooltip.set_text(
+                    f"粮草: {hit['food']}\n积分: {hit['award']}"
+                )
+                self._action_tooltip.set_visible(True)
+            self.fig.canvas.draw_idle()
+            return
+
+        self._action_tooltip.set_visible(False)
+
         # Handle right-click pan
         if self._pan_active and event.x is not None and event.y is not None:
             # Convert the raw pixel position through the transform frozen at
@@ -1261,8 +1291,19 @@ class PathfindingDemo:
             for idx in range(future_start_idx, len(seg_infos))
         ]
 
-        # Keep only history up to yesterday.
+        # Keep only history up to yesterday. The buff snapshot must represent
+        # the state at the start of the edited day, not the old route's final
+        # state after later days have already consumed more charges.
         self._truncate_team_history_from_segment(team, first_day_idx)
+        self._derive_team_buff_state(team)
+        bxz_state_before_edit = {
+            'b_discount_remaining': team.b_discount_remaining,
+            'b_discount_name': team.b_discount_name,
+            'x_bonus_remaining': team.x_bonus_remaining,
+            'x_bonus_name': team.x_bonus_name,
+            'z_bonus_remaining': team.z_bonus_remaining,
+            'z_bonus_name': team.z_bonus_name,
+        }
 
         self._day_edit_context = {
             'team': team,
@@ -1273,6 +1314,7 @@ class PathfindingDemo:
             'anchor_next_start': anchor_next_start,
             'pending_future_payload': pending_future_payload,
             'future_preview_segments': future_preview_segments,
+            'bxz_state_before_edit': bxz_state_before_edit,
         }
         self._segment_edit_mode = True
         self._segment_edit_targets = []
@@ -1914,7 +1956,21 @@ class PathfindingDemo:
         # probe, a deferred fly landing, or a team created on top of it.
         unsettled = set()
         pos_by_team = {team: team.origin for team in teams}
-        no_buff = types.SimpleNamespace(b_discount_remaining=0)
+        no_buff = types.SimpleNamespace(
+            b_discount_remaining=0,
+            b_discount_name=None,
+            x_bonus_remaining=0,
+            x_bonus_name=None,
+            z_bonus_remaining=0,
+            z_bonus_name=None,
+        )
+        recost_buffs = {team: no_buff for team in teams}
+        if self._day_edit_context is not None:
+            edit_team = self._day_edit_context.get('team')
+            saved_bxz = self._day_edit_context.get('bxz_state_before_edit', {})
+            if edit_team in recost_buffs and saved_bxz:
+                recost_buffs[edit_team] = types.SimpleNamespace(**saved_bxz)
+        active_recost_buff = no_buff
 
         def all_g():
             return len(visited_g) == len(self.all_g_lands) and len(self.all_g_lands) > 0
@@ -1926,7 +1982,10 @@ class PathfindingDemo:
         def fresh_capture(hex_pos, seg_day, is_fly):
             t = _terrain(*hex_pos)
             challenge = _apply_challenge_discounts(
-                _get_terrain_food(t, seg_day), no_buff, all_g(), is_tent=t.get('name') == 'Tent')
+                _get_terrain_food(t, seg_day), active_recost_buff, all_g(), is_tent=t.get('name') == 'Tent')
+            reward = t['award']
+            if active_recost_buff.z_bonus_remaining > 0:
+                reward = _apply_z_bonus(reward, active_recost_buff)
             if is_fly:
                 movement = 0
                 step = t.get('step', 1)
@@ -1934,13 +1993,27 @@ class PathfindingDemo:
             else:
                 movement = _apply_g_reduction(50, all_g())
                 steps = t.get('step', 1)
-            return (movement + challenge, t['award'], steps)
+            if active_recost_buff.b_discount_remaining > 0:
+                active_recost_buff.b_discount_remaining -= 1
+            if active_recost_buff.z_bonus_remaining > 0:
+                active_recost_buff.z_bonus_remaining -= 1
+            if active_recost_buff.x_bonus_remaining > 0 and not is_fly and steps > 0:
+                steps = 0
+                active_recost_buff.x_bonus_remaining -= 1
+            return (movement + challenge, reward, steps)
 
         def fresh_settle(hex_pos, seg_day):
             t = _terrain(*hex_pos)
             challenge = _apply_challenge_discounts(
-                _get_terrain_food(t, seg_day), no_buff, all_g(), is_tent=t.get('name') == 'Tent')
-            return (challenge, t['award'], 1)
+                _get_terrain_food(t, seg_day), active_recost_buff, all_g(), is_tent=t.get('name') == 'Tent')
+            reward = t['award']
+            if active_recost_buff.z_bonus_remaining > 0:
+                reward = _apply_z_bonus(reward, active_recost_buff)
+            if active_recost_buff.b_discount_remaining > 0:
+                active_recost_buff.b_discount_remaining -= 1
+            if active_recost_buff.z_bonus_remaining > 0:
+                active_recost_buff.z_bonus_remaining -= 1
+            return (challenge, reward, 1)
 
         def is_portal(hex_pos):
             token = RAW_MAP[hex_pos[0]][hex_pos[1]] if 0 <= hex_pos[0] < ROWS and 0 <= hex_pos[1] < COLS else ''
@@ -1979,6 +2052,8 @@ class PathfindingDemo:
                 unsettled -= captured
                 pos_by_team[team] = end_pos
                 continue
+
+            active_recost_buff = recost_buffs[team]
 
             is_fly = bool(team._seg_is_fly_skill[i]) if i < len(team._seg_is_fly_skill) else False
             stored_costs = list(team._seg_hex_costs[i]) if i < len(team._seg_hex_costs) else []
@@ -2273,6 +2348,41 @@ class PathfindingDemo:
             
             self._set_fly_button_border('#777777', 0.8)  # Reset to default border
         self._draw()
+
+    def _is_valid_fly_destination(self, destination):
+        """Return whether a target borders the occupied region connected to start."""
+        team = self.active_team
+        if team is None or destination in self.all_visited_hexes:
+            return False
+
+        unsettled_exploration = {
+            hex_pos
+            for other_team in (self.team1, self.team2, self.team3)
+            if other_team is not None
+            for hex_pos in other_team.free_exploration_hexes
+            if not self._is_hex_settled(hex_pos)
+        }
+        occupied_hexes = self.all_visited_hexes - unsettled_exploration
+        start = tuple(team.full_path[-1])
+        connected_occupied = {start} if start in occupied_hexes else set()
+        frontier = [start]
+        seen = {start}
+        while frontier:
+            current = frontier.pop()
+            for neighbor in _neighbors(*current):
+                if neighbor in seen:
+                    continue
+                seen.add(neighbor)
+                if neighbor in occupied_hexes:
+                    connected_occupied.add(neighbor)
+                    frontier.append(neighbor)
+
+        if not connected_occupied:
+            return False
+        return any(
+            destination in _neighbors(*occupied_hex)
+            for occupied_hex in connected_occupied
+        )
     
     def _set_fly_button_border(self, color, linewidth):
         """Set the border color and width of the fly skill button."""
@@ -2622,6 +2732,7 @@ class PathfindingDemo:
         self._team_action_ax.set_facecolor(APP_BACKGROUND_COLOR)
         self._team_action_ax.set_xlim(0, 3)
         self._team_action_ax.axis('off')
+        self._action_symbol_hits = []
         
         # Import Rectangle and Circle for drawing symbols
         from matplotlib.patches import Rectangle, Circle
@@ -2646,12 +2757,41 @@ class PathfindingDemo:
                     action_segments.append({
                         'order': team._seg_action_orders[seg_idx],
                         'team_idx': team_idx,
+                        'team': team,
+                        'seg_idx': seg_idx,
                         'actions': actions,
                         'symbol_count': symbol_count,
                     })
                     total_symbols += symbol_count
 
         action_segments.sort(key=lambda item: item['order'])
+
+        def _action_costs_for_segment(team, seg_idx, actions):
+            """Return one (food, award) pair for each recorded action."""
+            if team is None or seg_idx is None:
+                return [(0, 0) for _ in actions]
+
+            stored_costs = team._seg_hex_costs[seg_idx] if seg_idx < len(team._seg_hex_costs) else []
+            costs = [
+                (entry[0], entry[1])
+                for entry in stored_costs
+                if isinstance(entry, (list, tuple)) and len(entry) >= 2
+            ]
+
+            if len(costs) == len(actions):
+                return costs
+            if actions and actions[0][0] == 'fly' and len(costs) == len(actions) - 1:
+                return [(0, 0)] + costs
+            if len(costs) > len(actions):
+                return costs[-len(actions):]
+            return costs + [(0, 0) for _ in range(len(actions) - len(costs))]
+
+        for action_segment in action_segments:
+            action_segment['action_costs'] = _action_costs_for_segment(
+                action_segment['team'],
+                action_segment['seg_idx'],
+                action_segment['actions'],
+            )
 
         # A player can create adjacent path segments while continuing to jump
         # through taken hexes. Combine that uninterrupted run into one symbol;
@@ -2668,11 +2808,15 @@ class PathfindingDemo:
                 and actions[0][0] == 'jump'
             ):
                 previous['actions'].extend(actions)
+                previous['action_costs'].extend(action_segment['action_costs'])
                 continue
             merged_segments.append({
                 'order': action_segment['order'],
                 'team_idx': action_segment['team_idx'],
+                'team': action_segment.get('team'),
+                'seg_idx': action_segment.get('seg_idx'),
                 'actions': actions,
+                'action_costs': list(action_segment['action_costs']),
             })
 
         def _count_symbols(actions):
@@ -2725,6 +2869,7 @@ class PathfindingDemo:
             actions_today = action_segment['actions']
             x_pos = x_positions[action_segment['team_idx']]
             y_pos = y_start - (symbols_before_segment * 0.375)
+            action_costs = action_segment.get('action_costs', [])
             
             # Draw symbols in the order they appear in actions_today
             i = 0
@@ -2749,6 +2894,12 @@ class PathfindingDemo:
                                     facecolor=fc, edgecolor=ec, linewidth=0.5,
                                     hatch=hatch, zorder=2)
                     self._team_action_ax.add_patch(rect)
+                    self._action_symbol_hits.append({
+                        'x0': x_pos - 0.18, 'x1': x_pos + 0.18,
+                        'y0': y_pos - 0.22, 'y1': y_pos + 0.22,
+                        'food': action_costs[i][0] if i < len(action_costs) else 0,
+                        'award': action_costs[i][1] if i < len(action_costs) else 0,
+                    })
                     y_pos -= 0.375  # Increased spacing for larger symbols
                     i += 1
                     
@@ -2771,6 +2922,12 @@ class PathfindingDemo:
                     )
                     for patch in (ring, handle, guard, blade):
                         self._team_action_ax.add_patch(patch)
+                    self._action_symbol_hits.append({
+                        'x0': x_pos - 0.18, 'x1': x_pos + 0.28,
+                        'y0': y_pos - 0.22, 'y1': y_pos + 0.22,
+                        'food': action_costs[i][0] if i < len(action_costs) else 0,
+                        'award': action_costs[i][1] if i < len(action_costs) else 0,
+                    })
                     y_pos -= 0.375
                     i += 1
 
@@ -2788,6 +2945,18 @@ class PathfindingDemo:
                                    facecolor='#FFB6C1', edgecolor='#FF69B4', 
                                    linewidth=1, zorder=3)
                     self._team_action_ax.add_patch(circle)
+                    self._action_symbol_hits.append({
+                        'x0': x_pos - 0.22, 'x1': x_pos + 0.22,
+                        'y0': y_pos - 0.22, 'y1': y_pos + 0.22,
+                        'food': sum(
+                            action_costs[k][0]
+                            for k in range(i, min(j, len(action_costs)))
+                        ),
+                        'award': sum(
+                            action_costs[k][1]
+                            for k in range(i, min(j, len(action_costs)))
+                        ),
+                    })
                     
                     # Add jump count text (larger)
                     self._team_action_ax.text(x_pos, y_pos, str(jump_count),
@@ -3536,7 +3705,7 @@ class PathfindingDemo:
         """Toggle checkbox state and update button appearance."""
         self._chk_state = not self._chk_state
         # Update button text with checkmark/empty box
-        text = '☑ 显示buff' if self._chk_state else '☐ 显示buff'
+        text = '[X] 显示buff' if self._chk_state else '[ ] 显示buff'
         self._btn_chk_labels.label.set_text(text)
         # Update button color
         color = '#90EE90' if self._chk_state else '#FFCCCC'
@@ -3556,7 +3725,7 @@ class PathfindingDemo:
         if not hasattr(self, '_btn_show_future') or self._btn_show_future is None:
             return
 
-        text = '☑ 显示未来' if self._show_future_paths else '☐ 显示未来'
+        text = '[X] 显示未来' if self._show_future_paths else '[ ] 显示未来'
         self._btn_show_future.label.set_text(text)
         self._btn_show_future.color = '#90EE90' if self._show_future_paths else '#FFCCCC'
         self._btn_show_future.hovercolor = '#7FDF7F' if self._show_future_paths else '#FFB3B3'
@@ -4219,9 +4388,9 @@ class PathfindingDemo:
             print('DEBUG: SaveXLX button clicked')
 
             try:
-                import importlib
-                openpyxl_mod = importlib.import_module('openpyxl')
-                load_workbook = openpyxl_mod.load_workbook
+                # Keep this import explicit so PyInstaller includes openpyxl
+                # when the application is built from the Python entry point.
+                from openpyxl import load_workbook
             except Exception:
                 self._status_msg = 'Export error: openpyxl is required. Please install openpyxl first.'
                 self._draw()
@@ -4940,6 +5109,13 @@ class PathfindingDemo:
                 if pos == current_pos:
                     self._status_msg = 'Already at this hex.'
                     return
+
+                if not self._is_valid_fly_destination(pos):
+                    self._status_msg = (
+                        '飞雷神只能到达未占领地块，且目标必须位于当前队伍领地外沿的两跳范围内。'
+                    )
+                    self._draw()
+                    return
                 
                 try:
                     t = _terrain(*pos)
@@ -5191,6 +5367,14 @@ class PathfindingDemo:
                 return
 
             segment, cost_map = _astar(current, pos, set())
+            replay_path = getattr(self, '_replay_path_override', None)
+            if replay_path is not None:
+                replay_path = [tuple(hex_pos) for hex_pos in replay_path]
+                if not replay_path or replay_path[0] != current or replay_path[-1] != pos:
+                    self._status_msg = 'Invalid replay path: start or destination does not match.'
+                    self._draw()
+                    return
+                segment = replay_path
             if not segment or len(segment) < 2:
                 self._status_msg = f'No path found to ({pos[0]},{pos[1]}).'
                 self._draw()
@@ -5606,7 +5790,21 @@ class PathfindingDemo:
         
         self.ax.set_xlim([xdata - new_width * (1 - relx), xdata + new_width * relx])
         self.ax.set_ylim([ydata - new_height * (1 - rely), ydata + new_height * rely])
-        
+
+        # Keep zoom interaction light while the wheel is still moving. Route
+        # artists are rebuilt once the view has been idle for one second.
+        if self._zoom_refresh_timer is not None:
+            self._zoom_refresh_timer.stop()
+            self._zoom_refresh_timer = None
+
+        def _refresh_after_zoom():
+            self._zoom_refresh_timer = None
+            self._draw()
+
+        self._zoom_refresh_timer = self.fig.canvas.new_timer(interval=1000)
+        self._zoom_refresh_timer.single_shot = True
+        self._zoom_refresh_timer.callbacks.append((_refresh_after_zoom, (), {}))
+        self._zoom_refresh_timer.start()
         self.fig.canvas.draw_idle()
 
     def _on_hscroll_changed(self, val):

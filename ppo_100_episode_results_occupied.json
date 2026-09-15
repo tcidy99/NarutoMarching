@@ -1,0 +1,1008 @@
+{
+  "episodes_requested": 100,
+  "episodes_completed": 100,
+  "total_timesteps": 100000,
+  "elapsed_seconds": 369.267135,
+  "results": [
+    {
+      "episode": 1,
+      "score": 7500,
+      "training_reward": 0.0,
+      "final_day": 38,
+      "final_food": 66000,
+      "final_occupied": 1,
+      "steps": 1000,
+      "elapsed_seconds": 2.691118
+    },
+    {
+      "episode": 2,
+      "score": 7500,
+      "training_reward": 0.0,
+      "final_day": 26,
+      "final_food": 46800,
+      "final_occupied": 1,
+      "steps": 1000,
+      "elapsed_seconds": 6.172114
+    },
+    {
+      "episode": 3,
+      "score": 7500,
+      "training_reward": 0.0,
+      "final_day": 16,
+      "final_food": 30800,
+      "final_occupied": 1,
+      "steps": 1000,
+      "elapsed_seconds": 9.68968
+    },
+    {
+      "episode": 4,
+      "score": 7500,
+      "training_reward": 0.0,
+      "final_day": 9,
+      "final_food": 19600,
+      "final_occupied": 1,
+      "steps": 1000,
+      "elapsed_seconds": 12.95534
+    },
+    {
+      "episode": 5,
+      "score": 7500,
+      "training_reward": 0.0,
+      "final_day": 15,
+      "final_food": 29200,
+      "final_occupied": 1,
+      "steps": 1000,
+      "elapsed_seconds": 16.047753
+    },
+    {
+      "episode": 6,
+      "score": 7535,
+      "training_reward": 0.0,
+      "final_day": 4,
+      "final_food": 11500,
+      "final_occupied": 2,
+      "steps": 1000,
+      "elapsed_seconds": 19.052184
+    },
+    {
+      "episode": 7,
+      "score": 7500,
+      "training_reward": 0.0,
+      "final_day": 3,
+      "final_food": 10000,
+      "final_occupied": 1,
+      "steps": 1000,
+      "elapsed_seconds": 21.945037
+    },
+    {
+      "episode": 8,
+      "score": 7500,
+      "training_reward": 0.0,
+      "final_day": 2,
+      "final_food": 8400,
+      "final_occupied": 1,
+      "steps": 1000,
+      "elapsed_seconds": 24.944228
+    },
+    {
+      "episode": 9,
+      "score": 7500,
+      "training_reward": 0.0,
+      "final_day": 2,
+      "final_food": 8400,
+      "final_occupied": 1,
+      "steps": 1000,
+      "elapsed_seconds": 27.940594
+    },
+    {
+      "episode": 10,
+      "score": 7500,
+      "training_reward": 0.0,
+      "final_day": 1,
+      "final_food": 6800,
+      "final_occupied": 1,
+      "steps": 1000,
+      "elapsed_seconds": 30.887917
+    },
+    {
+      "episode": 11,
+      "score": 7500,
+      "training_reward": 0.0,
+      "final_day": 1,
+      "final_food": 6800,
+      "final_occupied": 1,
+      "steps": 1000,
+      "elapsed_seconds": 33.535283
+    },
+    {
+      "episode": 12,
+      "score": 7500,
+      "training_reward": 0.0,
+      "final_day": 1,
+      "final_food": 6800,
+      "final_occupied": 1,
+      "steps": 1000,
+      "elapsed_seconds": 36.80589
+    },
+    {
+      "episode": 13,
+      "score": 7500,
+      "training_reward": 0.0,
+      "final_day": 1,
+      "final_food": 6800,
+      "final_occupied": 1,
+      "steps": 1000,
+      "elapsed_seconds": 40.526385
+    },
+    {
+      "episode": 14,
+      "score": 7500,
+      "training_reward": 0.0,
+      "final_day": 1,
+      "final_food": 6800,
+      "final_occupied": 1,
+      "steps": 1000,
+      "elapsed_seconds": 44.492905
+    },
+    {
+      "episode": 15,
+      "score": 7500,
+      "training_reward": 0.0,
+      "final_day": 1,
+      "final_food": 6800,
+      "final_occupied": 1,
+      "steps": 1000,
+      "elapsed_seconds": 48.288609
+    },
+    {
+      "episode": 16,
+      "score": 7500,
+      "training_reward": 0.0,
+      "final_day": 1,
+      "final_food": 6800,
+      "final_occupied": 1,
+      "steps": 1000,
+      "elapsed_seconds": 51.727239
+    },
+    {
+      "episode": 17,
+      "score": 7500,
+      "training_reward": 0.0,
+      "final_day": 1,
+      "final_food": 6800,
+      "final_occupied": 1,
+      "steps": 1000,
+      "elapsed_seconds": 54.728411
+    },
+    {
+      "episode": 18,
+      "score": 7535,
+      "training_reward": 0.0,
+      "final_day": 1,
+      "final_food": 6700,
+      "final_occupied": 2,
+      "steps": 1000,
+      "elapsed_seconds": 58.55465
+    },
+    {
+      "episode": 19,
+      "score": 7675,
+      "training_reward": 0.0,
+      "final_day": 1,
+      "final_food": 6090,
+      "final_occupied": 6,
+      "steps": 1000,
+      "elapsed_seconds": 62.488869
+    },
+    {
+      "episode": 20,
+      "score": 7570,
+      "training_reward": 0.0,
+      "final_day": 2,
+      "final_food": 8150,
+      "final_occupied": 3,
+      "steps": 1000,
+      "elapsed_seconds": 66.627659
+    },
+    {
+      "episode": 21,
+      "score": 7785,
+      "training_reward": 0.0,
+      "final_day": 2,
+      "final_food": 7250,
+      "final_occupied": 9,
+      "steps": 1000,
+      "elapsed_seconds": 70.527249
+    },
+    {
+      "episode": 22,
+      "score": 7570,
+      "training_reward": 0.0,
+      "final_day": 1,
+      "final_food": 6550,
+      "final_occupied": 3,
+      "steps": 1000,
+      "elapsed_seconds": 73.83002
+    },
+    {
+      "episode": 23,
+      "score": 7850,
+      "training_reward": 0.0,
+      "final_day": 1,
+      "final_food": 5310,
+      "final_occupied": 11,
+      "steps": 1000,
+      "elapsed_seconds": 78.03353
+    },
+    {
+      "episode": 24,
+      "score": 7570,
+      "training_reward": 0.0,
+      "final_day": 1,
+      "final_food": 6550,
+      "final_occupied": 3,
+      "steps": 1000,
+      "elapsed_seconds": 82.221628
+    },
+    {
+      "episode": 25,
+      "score": 7535,
+      "training_reward": 0.0,
+      "final_day": 1,
+      "final_food": 6700,
+      "final_occupied": 2,
+      "steps": 1000,
+      "elapsed_seconds": 85.287077
+    },
+    {
+      "episode": 26,
+      "score": 7535,
+      "training_reward": 0.0,
+      "final_day": 1,
+      "final_food": 6700,
+      "final_occupied": 2,
+      "steps": 1000,
+      "elapsed_seconds": 88.669563
+    },
+    {
+      "episode": 27,
+      "score": 7535,
+      "training_reward": 0.0,
+      "final_day": 1,
+      "final_food": 6700,
+      "final_occupied": 2,
+      "steps": 1000,
+      "elapsed_seconds": 93.530035
+    },
+    {
+      "episode": 28,
+      "score": 7500,
+      "training_reward": 0.0,
+      "final_day": 1,
+      "final_food": 6800,
+      "final_occupied": 1,
+      "steps": 1000,
+      "elapsed_seconds": 97.777202
+    },
+    {
+      "episode": 29,
+      "score": 7880,
+      "training_reward": 0.0,
+      "final_day": 2,
+      "final_food": 6900,
+      "final_occupied": 12,
+      "steps": 1000,
+      "elapsed_seconds": 102.16677
+    },
+    {
+      "episode": 30,
+      "score": 7500,
+      "training_reward": 0.0,
+      "final_day": 1,
+      "final_food": 6800,
+      "final_occupied": 1,
+      "steps": 1000,
+      "elapsed_seconds": 105.872326
+    },
+    {
+      "episode": 31,
+      "score": 7500,
+      "training_reward": 0.0,
+      "final_day": 1,
+      "final_food": 6800,
+      "final_occupied": 1,
+      "steps": 1000,
+      "elapsed_seconds": 109.603207
+    },
+    {
+      "episode": 32,
+      "score": 7500,
+      "training_reward": 0.0,
+      "final_day": 1,
+      "final_food": 6800,
+      "final_occupied": 1,
+      "steps": 1000,
+      "elapsed_seconds": 113.082667
+    },
+    {
+      "episode": 33,
+      "score": 7500,
+      "training_reward": 0.0,
+      "final_day": 1,
+      "final_food": 6800,
+      "final_occupied": 1,
+      "steps": 1000,
+      "elapsed_seconds": 117.189444
+    },
+    {
+      "episode": 34,
+      "score": 7535,
+      "training_reward": 0.0,
+      "final_day": 1,
+      "final_food": 6700,
+      "final_occupied": 2,
+      "steps": 1000,
+      "elapsed_seconds": 121.507904
+    },
+    {
+      "episode": 35,
+      "score": 7535,
+      "training_reward": 0.0,
+      "final_day": 1,
+      "final_food": 6700,
+      "final_occupied": 2,
+      "steps": 1000,
+      "elapsed_seconds": 125.556921
+    },
+    {
+      "episode": 36,
+      "score": 7500,
+      "training_reward": 0.0,
+      "final_day": 1,
+      "final_food": 6800,
+      "final_occupied": 1,
+      "steps": 1000,
+      "elapsed_seconds": 129.268821
+    },
+    {
+      "episode": 37,
+      "score": 7500,
+      "training_reward": 0.0,
+      "final_day": 1,
+      "final_food": 6800,
+      "final_occupied": 1,
+      "steps": 1000,
+      "elapsed_seconds": 133.057769
+    },
+    {
+      "episode": 38,
+      "score": 7535,
+      "training_reward": 0.0,
+      "final_day": 1,
+      "final_food": 6700,
+      "final_occupied": 2,
+      "steps": 1000,
+      "elapsed_seconds": 137.507495
+    },
+    {
+      "episode": 39,
+      "score": 7535,
+      "training_reward": 0.0,
+      "final_day": 1,
+      "final_food": 6700,
+      "final_occupied": 2,
+      "steps": 1000,
+      "elapsed_seconds": 142.159311
+    },
+    {
+      "episode": 40,
+      "score": 7535,
+      "training_reward": 0.0,
+      "final_day": 1,
+      "final_food": 6700,
+      "final_occupied": 2,
+      "steps": 1000,
+      "elapsed_seconds": 146.016227
+    },
+    {
+      "episode": 41,
+      "score": 7535,
+      "training_reward": 0.0,
+      "final_day": 1,
+      "final_food": 6700,
+      "final_occupied": 2,
+      "steps": 1000,
+      "elapsed_seconds": 149.662007
+    },
+    {
+      "episode": 42,
+      "score": 7535,
+      "training_reward": 0.0,
+      "final_day": 2,
+      "final_food": 8300,
+      "final_occupied": 2,
+      "steps": 1000,
+      "elapsed_seconds": 154.459104
+    },
+    {
+      "episode": 43,
+      "score": 7535,
+      "training_reward": 0.0,
+      "final_day": 1,
+      "final_food": 6700,
+      "final_occupied": 2,
+      "steps": 1000,
+      "elapsed_seconds": 158.311523
+    },
+    {
+      "episode": 44,
+      "score": 7535,
+      "training_reward": 0.0,
+      "final_day": 1,
+      "final_food": 6700,
+      "final_occupied": 2,
+      "steps": 1000,
+      "elapsed_seconds": 162.516761
+    },
+    {
+      "episode": 45,
+      "score": 7535,
+      "training_reward": 0.0,
+      "final_day": 1,
+      "final_food": 6700,
+      "final_occupied": 2,
+      "steps": 1000,
+      "elapsed_seconds": 166.414268
+    },
+    {
+      "episode": 46,
+      "score": 7535,
+      "training_reward": 0.0,
+      "final_day": 1,
+      "final_food": 6700,
+      "final_occupied": 2,
+      "steps": 1000,
+      "elapsed_seconds": 171.239423
+    },
+    {
+      "episode": 47,
+      "score": 7535,
+      "training_reward": 0.0,
+      "final_day": 1,
+      "final_food": 6700,
+      "final_occupied": 2,
+      "steps": 1000,
+      "elapsed_seconds": 176.355512
+    },
+    {
+      "episode": 48,
+      "score": 7500,
+      "training_reward": 0.0,
+      "final_day": 1,
+      "final_food": 6800,
+      "final_occupied": 1,
+      "steps": 1000,
+      "elapsed_seconds": 180.423346
+    },
+    {
+      "episode": 49,
+      "score": 7500,
+      "training_reward": 0.0,
+      "final_day": 1,
+      "final_food": 6800,
+      "final_occupied": 1,
+      "steps": 1000,
+      "elapsed_seconds": 184.603727
+    },
+    {
+      "episode": 50,
+      "score": 7500,
+      "training_reward": 0.0,
+      "final_day": 1,
+      "final_food": 6800,
+      "final_occupied": 1,
+      "steps": 1000,
+      "elapsed_seconds": 188.432602
+    },
+    {
+      "episode": 51,
+      "score": 7500,
+      "training_reward": 0.0,
+      "final_day": 1,
+      "final_food": 6800,
+      "final_occupied": 1,
+      "steps": 1000,
+      "elapsed_seconds": 192.317787
+    },
+    {
+      "episode": 52,
+      "score": 7500,
+      "training_reward": 0.0,
+      "final_day": 1,
+      "final_food": 6800,
+      "final_occupied": 1,
+      "steps": 1000,
+      "elapsed_seconds": 196.122213
+    },
+    {
+      "episode": 53,
+      "score": 7500,
+      "training_reward": 0.0,
+      "final_day": 1,
+      "final_food": 6800,
+      "final_occupied": 1,
+      "steps": 1000,
+      "elapsed_seconds": 199.691216
+    },
+    {
+      "episode": 54,
+      "score": 7500,
+      "training_reward": 0.0,
+      "final_day": 1,
+      "final_food": 6800,
+      "final_occupied": 1,
+      "steps": 1000,
+      "elapsed_seconds": 202.746914
+    },
+    {
+      "episode": 55,
+      "score": 7500,
+      "training_reward": 0.0,
+      "final_day": 1,
+      "final_food": 6800,
+      "final_occupied": 1,
+      "steps": 1000,
+      "elapsed_seconds": 206.293873
+    },
+    {
+      "episode": 56,
+      "score": 7500,
+      "training_reward": 0.0,
+      "final_day": 1,
+      "final_food": 6800,
+      "final_occupied": 1,
+      "steps": 1000,
+      "elapsed_seconds": 209.866046
+    },
+    {
+      "episode": 57,
+      "score": 7500,
+      "training_reward": 0.0,
+      "final_day": 1,
+      "final_food": 6800,
+      "final_occupied": 1,
+      "steps": 1000,
+      "elapsed_seconds": 213.406959
+    },
+    {
+      "episode": 58,
+      "score": 7500,
+      "training_reward": 0.0,
+      "final_day": 1,
+      "final_food": 6800,
+      "final_occupied": 1,
+      "steps": 1000,
+      "elapsed_seconds": 216.610801
+    },
+    {
+      "episode": 59,
+      "score": 7500,
+      "training_reward": 0.0,
+      "final_day": 1,
+      "final_food": 6800,
+      "final_occupied": 1,
+      "steps": 1000,
+      "elapsed_seconds": 220.127187
+    },
+    {
+      "episode": 60,
+      "score": 7500,
+      "training_reward": 0.0,
+      "final_day": 1,
+      "final_food": 6800,
+      "final_occupied": 1,
+      "steps": 1000,
+      "elapsed_seconds": 223.468312
+    },
+    {
+      "episode": 61,
+      "score": 7500,
+      "training_reward": 0.0,
+      "final_day": 1,
+      "final_food": 6800,
+      "final_occupied": 1,
+      "steps": 1000,
+      "elapsed_seconds": 226.815458
+    },
+    {
+      "episode": 62,
+      "score": 7500,
+      "training_reward": 0.0,
+      "final_day": 1,
+      "final_food": 6800,
+      "final_occupied": 1,
+      "steps": 1000,
+      "elapsed_seconds": 229.969412
+    },
+    {
+      "episode": 63,
+      "score": 7500,
+      "training_reward": 0.0,
+      "final_day": 1,
+      "final_food": 6800,
+      "final_occupied": 1,
+      "steps": 1000,
+      "elapsed_seconds": 233.568595
+    },
+    {
+      "episode": 64,
+      "score": 7500,
+      "training_reward": 0.0,
+      "final_day": 1,
+      "final_food": 6800,
+      "final_occupied": 1,
+      "steps": 1000,
+      "elapsed_seconds": 236.386375
+    },
+    {
+      "episode": 65,
+      "score": 7500,
+      "training_reward": 0.0,
+      "final_day": 1,
+      "final_food": 6800,
+      "final_occupied": 1,
+      "steps": 1000,
+      "elapsed_seconds": 239.806428
+    },
+    {
+      "episode": 66,
+      "score": 7500,
+      "training_reward": 0.0,
+      "final_day": 1,
+      "final_food": 6800,
+      "final_occupied": 1,
+      "steps": 1000,
+      "elapsed_seconds": 243.368667
+    },
+    {
+      "episode": 67,
+      "score": 7500,
+      "training_reward": 0.0,
+      "final_day": 1,
+      "final_food": 6800,
+      "final_occupied": 1,
+      "steps": 1000,
+      "elapsed_seconds": 247.143851
+    },
+    {
+      "episode": 68,
+      "score": 7500,
+      "training_reward": 0.0,
+      "final_day": 1,
+      "final_food": 6800,
+      "final_occupied": 1,
+      "steps": 1000,
+      "elapsed_seconds": 250.620113
+    },
+    {
+      "episode": 69,
+      "score": 7500,
+      "training_reward": 0.0,
+      "final_day": 1,
+      "final_food": 6800,
+      "final_occupied": 1,
+      "steps": 1000,
+      "elapsed_seconds": 254.061902
+    },
+    {
+      "episode": 70,
+      "score": 7500,
+      "training_reward": 0.0,
+      "final_day": 1,
+      "final_food": 6800,
+      "final_occupied": 1,
+      "steps": 1000,
+      "elapsed_seconds": 257.516563
+    },
+    {
+      "episode": 71,
+      "score": 7500,
+      "training_reward": 0.0,
+      "final_day": 1,
+      "final_food": 6800,
+      "final_occupied": 1,
+      "steps": 1000,
+      "elapsed_seconds": 261.680507
+    },
+    {
+      "episode": 72,
+      "score": 7500,
+      "training_reward": 0.0,
+      "final_day": 1,
+      "final_food": 6800,
+      "final_occupied": 1,
+      "steps": 1000,
+      "elapsed_seconds": 265.502559
+    },
+    {
+      "episode": 73,
+      "score": 7500,
+      "training_reward": 0.0,
+      "final_day": 1,
+      "final_food": 6800,
+      "final_occupied": 1,
+      "steps": 1000,
+      "elapsed_seconds": 268.875271
+    },
+    {
+      "episode": 74,
+      "score": 7535,
+      "training_reward": 0.0,
+      "final_day": 1,
+      "final_food": 6700,
+      "final_occupied": 2,
+      "steps": 1000,
+      "elapsed_seconds": 272.241676
+    },
+    {
+      "episode": 75,
+      "score": 7535,
+      "training_reward": 0.0,
+      "final_day": 1,
+      "final_food": 6700,
+      "final_occupied": 2,
+      "steps": 1000,
+      "elapsed_seconds": 276.678132
+    },
+    {
+      "episode": 76,
+      "score": 7535,
+      "training_reward": 0.0,
+      "final_day": 1,
+      "final_food": 6700,
+      "final_occupied": 2,
+      "steps": 1000,
+      "elapsed_seconds": 280.50394
+    },
+    {
+      "episode": 77,
+      "score": 7535,
+      "training_reward": 0.0,
+      "final_day": 1,
+      "final_food": 6700,
+      "final_occupied": 2,
+      "steps": 1000,
+      "elapsed_seconds": 285.700903
+    },
+    {
+      "episode": 78,
+      "score": 7500,
+      "training_reward": 0.0,
+      "final_day": 1,
+      "final_food": 6800,
+      "final_occupied": 1,
+      "steps": 1000,
+      "elapsed_seconds": 289.350652
+    },
+    {
+      "episode": 79,
+      "score": 7500,
+      "training_reward": 0.0,
+      "final_day": 1,
+      "final_food": 6800,
+      "final_occupied": 1,
+      "steps": 1000,
+      "elapsed_seconds": 293.266984
+    },
+    {
+      "episode": 80,
+      "score": 7500,
+      "training_reward": 0.0,
+      "final_day": 1,
+      "final_food": 6800,
+      "final_occupied": 1,
+      "steps": 1000,
+      "elapsed_seconds": 297.023955
+    },
+    {
+      "episode": 81,
+      "score": 7500,
+      "training_reward": 0.0,
+      "final_day": 1,
+      "final_food": 6800,
+      "final_occupied": 1,
+      "steps": 1000,
+      "elapsed_seconds": 300.501294
+    },
+    {
+      "episode": 82,
+      "score": 7500,
+      "training_reward": 0.0,
+      "final_day": 1,
+      "final_food": 6800,
+      "final_occupied": 1,
+      "steps": 1000,
+      "elapsed_seconds": 303.779899
+    },
+    {
+      "episode": 83,
+      "score": 7535,
+      "training_reward": 0.0,
+      "final_day": 1,
+      "final_food": 6700,
+      "final_occupied": 2,
+      "steps": 1000,
+      "elapsed_seconds": 308.99485
+    },
+    {
+      "episode": 84,
+      "score": 7500,
+      "training_reward": 0.0,
+      "final_day": 1,
+      "final_food": 6800,
+      "final_occupied": 1,
+      "steps": 1000,
+      "elapsed_seconds": 312.30749
+    },
+    {
+      "episode": 85,
+      "score": 7500,
+      "training_reward": 0.0,
+      "final_day": 1,
+      "final_food": 6800,
+      "final_occupied": 1,
+      "steps": 1000,
+      "elapsed_seconds": 315.731563
+    },
+    {
+      "episode": 86,
+      "score": 7500,
+      "training_reward": 0.0,
+      "final_day": 1,
+      "final_food": 6800,
+      "final_occupied": 1,
+      "steps": 1000,
+      "elapsed_seconds": 318.688899
+    },
+    {
+      "episode": 87,
+      "score": 7500,
+      "training_reward": 0.0,
+      "final_day": 1,
+      "final_food": 6800,
+      "final_occupied": 1,
+      "steps": 1000,
+      "elapsed_seconds": 322.098055
+    },
+    {
+      "episode": 88,
+      "score": 7500,
+      "training_reward": 0.0,
+      "final_day": 1,
+      "final_food": 6800,
+      "final_occupied": 1,
+      "steps": 1000,
+      "elapsed_seconds": 325.755902
+    },
+    {
+      "episode": 89,
+      "score": 7500,
+      "training_reward": 0.0,
+      "final_day": 1,
+      "final_food": 6800,
+      "final_occupied": 1,
+      "steps": 1000,
+      "elapsed_seconds": 329.353982
+    },
+    {
+      "episode": 90,
+      "score": 7500,
+      "training_reward": 0.0,
+      "final_day": 1,
+      "final_food": 6800,
+      "final_occupied": 1,
+      "steps": 1000,
+      "elapsed_seconds": 332.92686
+    },
+    {
+      "episode": 91,
+      "score": 7500,
+      "training_reward": 0.0,
+      "final_day": 1,
+      "final_food": 6800,
+      "final_occupied": 1,
+      "steps": 1000,
+      "elapsed_seconds": 336.846119
+    },
+    {
+      "episode": 92,
+      "score": 7500,
+      "training_reward": 0.0,
+      "final_day": 1,
+      "final_food": 6800,
+      "final_occupied": 1,
+      "steps": 1000,
+      "elapsed_seconds": 340.577121
+    },
+    {
+      "episode": 93,
+      "score": 7500,
+      "training_reward": 0.0,
+      "final_day": 1,
+      "final_food": 6800,
+      "final_occupied": 1,
+      "steps": 1000,
+      "elapsed_seconds": 344.542446
+    },
+    {
+      "episode": 94,
+      "score": 7500,
+      "training_reward": 0.0,
+      "final_day": 1,
+      "final_food": 6800,
+      "final_occupied": 1,
+      "steps": 1000,
+      "elapsed_seconds": 348.170845
+    },
+    {
+      "episode": 95,
+      "score": 7500,
+      "training_reward": 0.0,
+      "final_day": 1,
+      "final_food": 6800,
+      "final_occupied": 1,
+      "steps": 1000,
+      "elapsed_seconds": 351.773316
+    },
+    {
+      "episode": 96,
+      "score": 7500,
+      "training_reward": 0.0,
+      "final_day": 1,
+      "final_food": 6800,
+      "final_occupied": 1,
+      "steps": 1000,
+      "elapsed_seconds": 355.077937
+    },
+    {
+      "episode": 97,
+      "score": 7500,
+      "training_reward": 0.0,
+      "final_day": 1,
+      "final_food": 6800,
+      "final_occupied": 1,
+      "steps": 1000,
+      "elapsed_seconds": 358.680798
+    },
+    {
+      "episode": 98,
+      "score": 7500,
+      "training_reward": 0.0,
+      "final_day": 1,
+      "final_food": 6800,
+      "final_occupied": 1,
+      "steps": 1000,
+      "elapsed_seconds": 362.427414
+    },
+    {
+      "episode": 99,
+      "score": 7500,
+      "training_reward": 0.0,
+      "final_day": 1,
+      "final_food": 6800,
+      "final_occupied": 1,
+      "steps": 1000,
+      "elapsed_seconds": 365.8137
+    },
+    {
+      "episode": 100,
+      "score": 7500,
+      "training_reward": 0.0,
+      "final_day": 1,
+      "final_food": 6800,
+      "final_occupied": 1,
+      "steps": 1000,
+      "elapsed_seconds": 369.267116
+    }
+  ]
+}

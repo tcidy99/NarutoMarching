@@ -1464,18 +1464,30 @@ class PathfindingDemo:
         for t in (self.team1, self.team2, self.team3):
             if t is not None:
                 self._derive_team_buff_state(t)
-        self._rebalance_all_teams_from_day(day)
+        rebalance_overflow = self._rebalance_all_teams_from_day(day)
         self._rebuild_shared_derived_state_from_segments()
         self._rebuild_day_records()
 
-        # Tent-degrade scheduling and the global G/g-completion timeline both depend
-        # on which day each Tent/G/g hex was reached. Reject the edit if the redraw
-        # (or the resulting rebalance/split of later segments) shifted any of them.
+        # The global G/g-completion timeline depends on exactly which day each
+        # G/g hex was reached, so any day shift there is rejected. A Tent's
+        # cost only depends on which degrade stage its day falls into (see
+        # _get_terrain_food) - a shift that stays within the same stage
+        # doesn't change anything any other segment's cost depends on, so
+        # only a shift into a *different* stage is treated as a real change.
         tent_g_days_before = ctx.get('pre_edit_tent_g_days', {})
         tent_g_days_after = self._compute_tent_and_g_capture_days()
+
+        def _hex_day_effectively_changed(h, old_day, new_day):
+            if new_day is None or old_day == new_day:
+                return new_day is None
+            terrain = _terrain(*h)
+            if terrain.get('name') == 'Tent':
+                return _get_terrain_food(terrain, old_day) != _get_terrain_food(terrain, new_day)
+            return True
+
         changed_hexes = sorted(
             h for h, old_day in tent_g_days_before.items()
-            if tent_g_days_after.get(h) != old_day
+            if _hex_day_effectively_changed(h, old_day, tent_g_days_after.get(h))
         )
         if changed_hexes:
             pre_edit_team_snapshots = ctx.get('pre_edit_team_snapshots', {})
@@ -1529,16 +1541,24 @@ class PathfindingDemo:
         self._day_edit_context = None
         self.current_day = day
         self._status_msg = f'Days {day}-{day_end} edit completed. Future segments reconnected successfully.'
+        if rebalance_overflow:
+            self._status_msg += (
+                f' WARNING: rebalancing could not fit all remaining moves within '
+                f'Day {TOTAL_DAYS} (the season length) - some segments are piled up on the last day.'
+            )
         return True
 
     def _rebalance_team_segment_days_from(self, team, start_day, preserve_future_days=True):
         """Reassign segment days from start_day onward to avoid per-day step overflow.
 
         Segments stay in original order; when a day runs out of steps, remaining segments
-        are pushed to following days.
+        are pushed to following days. Never pushes a segment past TOTAL_DAYS (there is no
+        such day to view/export); returns True if some segment still didn't fit even after
+        reaching the last day (a real overflow the redraw can't be fully squeezed into the
+        season), False otherwise.
         """
         if team is None or not team._seg_days:
-            return
+            return False
 
         earliest = max(start_day, team.created_day)
 
@@ -1579,6 +1599,7 @@ class PathfindingDemo:
         # Enter earliest day.
         current_day = earliest
         step_bank = min(step_bank + 6, 18)
+        overflow = False
 
         seg_idx = 0
         while seg_idx < len(team._seg_days):
@@ -1640,10 +1661,20 @@ class PathfindingDemo:
                             seg_steps = team._seg_steps[seg_idx]
                             seg_food = team._seg_foods[seg_idx]
 
-                    if (
+                    fits = (
                         (seg_steps <= 0 or step_bank >= seg_steps)
                         and (seg_food <= 0 or day_food_remaining >= seg_food)
-                    ):
+                    )
+                    if fits:
+                        break
+
+                    # The season only has TOTAL_DAYS days - a segment that still
+                    # doesn't fit even on the last day has nowhere real to go, so
+                    # stop advancing (there is no such day to view/export) and
+                    # flag the overflow instead of inventing a day past the end
+                    # of the season.
+                    if current_day >= TOTAL_DAYS:
+                        overflow = True
                         break
 
                     current_day += 1
@@ -1669,6 +1700,8 @@ class PathfindingDemo:
             team.max_day_reached = max(team.created_day, max(team._seg_days))
         else:
             team.max_day_reached = team.created_day
+
+        return overflow
 
     def _split_team_segment_by_step_budget(self, team, seg_idx, step_budget, food_budget):
         """Split one segment into [fits_today, overflow] using available step budget.
@@ -1992,26 +2025,34 @@ class PathfindingDemo:
                 team.max_day_reached = team.created_day
 
     def _rebalance_all_teams_from_day(self, start_day, max_passes=8, preserve_future_days=True):
-        """Iteratively rebalance all teams from a day to satisfy shared food and team steps."""
+        """Iteratively rebalance all teams from a day to satisfy shared food and team steps.
+
+        Returns True if some team's segments couldn't all be squeezed into the
+        season's TOTAL_DAYS days even after rebalancing (a redraw that simply
+        needs more days than the season has left).
+        """
         teams = [t for t in (self.team1, self.team2, self.team3) if t is not None]
         if not teams:
-            return
+            return False
 
         if not preserve_future_days:
             self._rebalance_enclosure_segments_from_day(start_day)
-            return
+            return False
 
         rebalance_start = max(1, int(start_day))
+        overflow = False
 
         for _ in range(max_passes):
             before = [tuple(t._seg_days) for t in teams]
 
+            overflow = False
             for team in teams:
-                self._rebalance_team_segment_days_from(
+                if self._rebalance_team_segment_days_from(
                     team,
                     max(rebalance_start, team.created_day),
                     preserve_future_days=preserve_future_days,
-                )
+                ):
+                    overflow = True
 
             has_step_overflow = any(
                 self._team_has_step_overflow_from(team, max(rebalance_start, team.created_day))
@@ -2024,6 +2065,8 @@ class PathfindingDemo:
                 break
             if before == after:
                 break
+
+        return overflow
 
     def _toggle_segment_edit_mode(self):
         """Toggle UI mode for selecting a segment on the current team/day."""
@@ -3513,14 +3556,17 @@ class PathfindingDemo:
             return True
 
         terrain = _terrain(*current_pos)
+        raw_challenge_food = _get_terrain_food(terrain, self.current_day)
         challenge_food = _apply_challenge_discounts(
-            _get_terrain_food(terrain, self.current_day),
+            raw_challenge_food,
             team,
             self._are_all_g_lands_visited(),
             is_tent=terrain.get('name') == 'Tent',
         )
+        b_discount_was_active = raw_challenge_food >= 0 and team.b_discount_remaining > 0
         reward = terrain.get('award', 0)
-        if team.z_bonus_remaining > 0:
+        z_bonus_was_active = team.z_bonus_remaining > 0
+        if z_bonus_was_active:
             reward = _apply_z_bonus(reward, team)
 
         if self.current_food < challenge_food:
@@ -3529,6 +3575,11 @@ class PathfindingDemo:
             )
             self._draw()
             return True
+
+        if b_discount_was_active:
+            team.b_discount_remaining -= 1
+        if z_bonus_was_active:
+            team.z_bonus_remaining -= 1
 
         team._seg_lengths.append(0)
         team._seg_foods.append(challenge_food)
@@ -4685,6 +4736,12 @@ class PathfindingDemo:
 
         day_events = {}
         for ev in events:
+            # A segment recorded outside the season's exportable day range
+            # (e.g. a stray move from an older build/config where the season
+            # length was different) has no day sheet to be written to - skip
+            # it rather than crash the whole export.
+            if not (1 <= ev['day'] <= TOTAL_DAYS):
+                continue
             day_events.setdefault(ev['day'], []).append(ev)
 
         for day in sorted(day_events.keys()):
@@ -5123,8 +5180,9 @@ class PathfindingDemo:
                         needs_rebalance = True
                         break
 
+            rebalance_overflow = False
             if needs_rebalance:
-                self._rebalance_all_teams_from_day(1)
+                rebalance_overflow = self._rebalance_all_teams_from_day(1)
 
             # Reconstruct shared derived runtime state from canonical segment history.
             self._rebuild_shared_derived_state_from_segments()
@@ -5137,6 +5195,11 @@ class PathfindingDemo:
                 self.current_food = self.day_records[self.current_day - 1]['food_remain']
             
             self._status_msg = f'Game loaded from {os.path.basename(file_path)}'
+            if rebalance_overflow:
+                self._status_msg += (
+                    f' WARNING: some segments could not be rebalanced within Day {TOTAL_DAYS} '
+                    f'(the season length) and are piled up on the last day.'
+                )
             self._has_zoomed = False
             self._draw()
             print(f'Game loaded successfully from {file_path}')
@@ -5519,15 +5582,27 @@ class PathfindingDemo:
                         current_pos in self.active_team.free_exploration_hexes
                         and not self._is_hex_settled(current_pos)
                     )
+                    # Snapshotted so an "expired" message can be shown after both
+                    # potential charges below (departure settle + landing) have
+                    # been consumed one at a time, rather than bulk-decrementing
+                    # by hex count afterward - which could let a second hex in
+                    # this same fly click get the discount/bonus even with only
+                    # one charge actually left.
+                    b_discount_before_seg = self.active_team.b_discount_remaining
+                    z_bonus_before_seg = self.active_team.z_bonus_remaining
                     dep_food = dep_award = 0
                     if is_leaving_exploration:
                         dep_t = _terrain(*current_pos)
+                        dep_terrain_food = _get_terrain_food(dep_t, self.current_day)
                         dep_food = _apply_challenge_discounts(
-                            _get_terrain_food(dep_t, self.current_day), self.active_team,
+                            dep_terrain_food, self.active_team,
                             self._are_all_g_lands_visited(), is_tent=dep_t.get('name') == 'Tent')
+                        if dep_terrain_food >= 0 and self.active_team.b_discount_remaining > 0:
+                            self.active_team.b_discount_remaining -= 1
                         dep_award = dep_t['award']
                         if self.active_team.z_bonus_remaining > 0:
                             dep_award = _apply_z_bonus(dep_award, self.active_team)
+                            self.active_team.z_bonus_remaining -= 1
 
                     # Calculate base challenge cost for destination terrain.
                     # Fly always waives the movement fee, including for BigBoss.
@@ -5535,13 +5610,15 @@ class PathfindingDemo:
                     # nothing is charged on landing; the challenge food is charged
                     # later at settle time (is_leaving_exploration / in-place-settle
                     # code paths below).
-                    challenge_food = _get_terrain_food(t, self.current_day)
+                    raw_challenge_food = _get_terrain_food(t, self.current_day)
                     challenge_food = _apply_challenge_discounts(
-                        challenge_food,
+                        raw_challenge_food,
                         self.active_team,
                         self._are_all_g_lands_visited(),
                         is_tent=t.get('name') == 'Tent'
                     )
+                    if is_new_hex and not defer_capture and raw_challenge_food >= 0 and self.active_team.b_discount_remaining > 0:
+                        self.active_team.b_discount_remaining -= 1
                     if defer_capture:
                         challenge_food = 0
                     seg_food = challenge_food
@@ -5662,19 +5739,13 @@ class PathfindingDemo:
                     if dest_terrain_name in X_BONUS_MAP and is_fly_new_hex:
                         self._status_msg += self._activate_land_buffs(pos)
 
-                    # Captured hexes (departure settle + landing) count as movements
-                    # for existing B/Z buffs; a deferred landing does not.
-                    movement_count = len(captured)
-
-                    if movement_count > 0 and self.active_team.b_discount_remaining > 0:
-                        self.active_team.b_discount_remaining = max(0, self.active_team.b_discount_remaining - movement_count)
-                        if self.active_team.b_discount_remaining == 0:
-                            self._status_msg += ' B discount expired.'
-
-                    if movement_count > 0 and self.active_team.z_bonus_remaining > 0:
-                        self.active_team.z_bonus_remaining = max(0, self.active_team.z_bonus_remaining - movement_count)
-                        if self.active_team.z_bonus_remaining == 0:
-                            self._status_msg += ' Z reward bonus expired.'
+                    # B/Z charges were already decremented one at a time, right
+                    # where each was actually used (departure settle above,
+                    # landing above) - just report if either ran out this move.
+                    if b_discount_before_seg > 0 and self.active_team.b_discount_remaining == 0:
+                        self._status_msg += ' B discount expired.'
+                    if z_bonus_before_seg > 0 and self.active_team.z_bonus_remaining == 0:
+                        self._status_msg += ' Z reward bonus expired.'
 
                     # A hex settled on departure is captured now, so its buff starts now.
                     if is_leaving_exploration:
@@ -5800,6 +5871,16 @@ class PathfindingDemo:
                 and not self._is_hex_settled(current_pos)
             )
 
+            # Snapshot B/Z buff charges before this segment's pricing consumes
+            # any of them, so an "expired" message can be shown afterward - the
+            # charges themselves are now decremented one at a time as each new
+            # hex in this segment is actually priced (see below), not in one
+            # lump sum by hex count at the end, which used to let every hex in
+            # an over-sized multi-hex segment get the discount/bonus even once
+            # the charge count ran out partway through it.
+            b_discount_before_seg = self.active_team.b_discount_remaining
+            z_bonus_before_seg = self.active_team.z_bonus_remaining
+
             # 圈地模式只记录路线，退出时再统一分配到未来 days。
             steps_available_for_day = 0 if self._enclosure_mode else self._get_team_steps_for_day(self.active_team, self.current_day)
 
@@ -5830,6 +5911,8 @@ class PathfindingDemo:
             # Calculate costs
             # Apply B discount and G reduction additively to departure challenge
             seg_food = _apply_challenge_discounts(departure_challenge, self.active_team, self._are_all_g_lands_visited(), is_tent=departure_is_tent)
+            if is_leaving_exploration and self.active_team.b_discount_remaining > 0:
+                self.active_team.b_discount_remaining -= 1
             seg_award = seg_steps = 0
             new_hexes = []
             exploration_hexes = []
@@ -5837,13 +5920,14 @@ class PathfindingDemo:
             action_sequence = []  # Track order of actions: ('new', hex) or ('jump', hex)
             segment_hexes = set()
             hex_costs = []
-            
+
             if is_leaving_exploration:
                 departure_terrain = _terrain(*current_pos)
                 departure_reward = departure_terrain['award']
                 # Apply Z bonus if active
                 if self.active_team.z_bonus_remaining > 0:
                     departure_reward = _apply_z_bonus(departure_reward, self.active_team)
+                    self.active_team.z_bonus_remaining -= 1
                 seg_award += departure_reward
                 seg_steps += 1
                 new_hexes.append(current_pos)
@@ -5876,9 +5960,12 @@ class PathfindingDemo:
                     # Apply Z bonus if active
                     if self.active_team.z_bonus_remaining > 0:
                         terrain_reward = _apply_z_bonus(terrain_reward, self.active_team)
+                        self.active_team.z_bonus_remaining -= 1
                     # Apply B discount first, then G/g reduction
                     # Apply B discount and G reduction additively to challenge food
                     challenge_cost = _apply_challenge_discounts(terrain_food, self.active_team, self._are_all_g_lands_visited(), is_tent=t.get('name') == 'Tent')
+                    if terrain_food >= 0 and self.active_team.b_discount_remaining > 0:
+                        self.active_team.b_discount_remaining -= 1
                     movement_cost = _apply_g_reduction(50, self._are_all_g_lands_visited())
                     cost = movement_cost + challenge_cost
                     seg_food += cost
@@ -5914,10 +6001,13 @@ class PathfindingDemo:
                     challenge_food = _get_terrain_food(t, self.current_day)
                     # Apply B discount and G reduction additively to challenge food
                     challenge_with_all_discounts = _apply_challenge_discounts(challenge_food, self.active_team, self._are_all_g_lands_visited(), is_tent=t.get('name') == 'Tent')
+                    if challenge_food >= 0 and self.active_team.b_discount_remaining > 0:
+                        self.active_team.b_discount_remaining -= 1
                     terrain_reward = t['award']
                     # Apply Z bonus if active
                     if self.active_team.z_bonus_remaining > 0:
                         terrain_reward = _apply_z_bonus(terrain_reward, self.active_team)
+                        self.active_team.z_bonus_remaining -= 1
                     # Apply G/g reduction: movement cost (50) always reduced
                     movement_cost = _apply_g_reduction(50, self._are_all_g_lands_visited())
                     total_cost = movement_cost + challenge_with_all_discounts
@@ -6077,22 +6167,13 @@ class PathfindingDemo:
                 self.active_team.x_bonus_name = final_terrain_name
                 self._status_msg = f'{self._status_msg} +{bonus_steps} free movements ({final_terrain_name})!'
             
-            # Count movements: only NEW hexes count as movements for B discount
-            # Revisiting taken hexes doesn't decrement the discount counter
-            movement_count = len(new_hexes)
-            if movement_count > 0 and self.active_team.b_discount_remaining > 0:
-                self.active_team.b_discount_remaining -= movement_count
-                if self.active_team.b_discount_remaining <= 0:
-                    self.active_team.b_discount_remaining = 0
-                    self._status_msg = f'{self._status_msg} B discount expired.'
-            
-            # Count movements: only NEW hexes count as movements for Z bonus
-            # Revisiting taken hexes doesn't decrement the bonus counter
-            if movement_count > 0 and self.active_team.z_bonus_remaining > 0:
-                self.active_team.z_bonus_remaining -= movement_count
-                if self.active_team.z_bonus_remaining <= 0:
-                    self.active_team.z_bonus_remaining = 0
-                    self._status_msg = f'{self._status_msg} Z reward bonus expired.'
+            # B/Z charges were already decremented one at a time, right where
+            # each was actually used (per hex, in the loop above) - just
+            # report if either ran out during this segment.
+            if b_discount_before_seg > 0 and self.active_team.b_discount_remaining == 0:
+                self._status_msg = f'{self._status_msg} B discount expired.'
+            if z_bonus_before_seg > 0 and self.active_team.z_bonus_remaining == 0:
+                self._status_msg = f'{self._status_msg} Z reward bonus expired.'
             
             # Check for bigBoss hex - increment fly skill if visiting for first time
             for hex_pos in new_hexes:

@@ -4437,6 +4437,107 @@ class PathfindingDemo:
         except Exception as e:
             print(f'Auto-save error: {e}')
 
+    def _clone_team_through_day_for_save(self, team, through_day):
+        if team is None:
+            return None
+        clone = copy.deepcopy(team)
+        keep_count = 0
+        for seg_day in clone._seg_days:
+            if int(seg_day) <= int(through_day):
+                keep_count += 1
+            else:
+                break
+        for field_name in self._segment_field_names():
+            value = getattr(clone, field_name, None)
+            if value is not None:
+                setattr(clone, field_name, value[:keep_count])
+        clone.full_path = [clone.origin]
+        for seg_nodes in clone._seg_path_nodes:
+            clone.full_path.extend(seg_nodes)
+        clone.max_day_reached = max(clone.created_day, max(clone._seg_days, default=clone.created_day))
+        clone.visited_hexes = set(clone.full_path)
+        clone.free_exploration_hexes = set()
+        clone._no_draw_edges = set()
+        return clone
+
+    def _build_game_state_for_save(self, through_day=None):
+        state_owner = self
+        if through_day is not None:
+            state_owner = PathfindingDemo.__new__(PathfindingDemo)
+            state_owner.team1 = self._clone_team_through_day_for_save(self.team1, through_day)
+            state_owner.team2 = self._clone_team_through_day_for_save(self.team2, through_day)
+            state_owner.team3 = self._clone_team_through_day_for_save(self.team3, through_day)
+            active_team_num = 1 if self.active_team is self.team1 else (2 if self.active_team is self.team2 else 3)
+            state_owner.active_team = {
+                1: state_owner.team1,
+                2: state_owner.team2,
+                3: state_owner.team3,
+            }.get(active_team_num, state_owner.team1)
+            state_owner.all_g_lands = set(self.all_g_lands)
+            state_owner.current_day = max(1, min(int(through_day), TOTAL_DAYS))
+            state_owner.current_food = self.current_food
+            state_owner.total_food = self.total_food
+            state_owner.total_reward = self.total_reward
+            state_owner.fly_skill_limit = self.fly_skill_limit
+            state_owner._next_action_order = self._next_action_order
+            state_owner._day_edit_context = None
+            state_owner._rebuild_shared_derived_state_from_segments()
+            for team in (state_owner.team1, state_owner.team2, state_owner.team3):
+                if team is not None:
+                    state_owner._derive_team_buff_state(team)
+            state_owner._rebuild_day_records()
+            if state_owner.day_records and 1 <= state_owner.current_day <= len(state_owner.day_records):
+                state_owner.current_food = state_owner.day_records[state_owner.current_day - 1]['food_remain']
+
+        def serialize_team(team):
+            if team is None:
+                return None
+            return {
+                'full_path': [list(h) for h in team.full_path],
+                'origin': list(team.origin),
+                'visited_hexes': [list(h) for h in team.visited_hexes],
+                'free_exploration_hexes': [list(h) for h in team.free_exploration_hexes],
+                'x_bonus_remaining': team.x_bonus_remaining,
+                'x_bonus_name': team.x_bonus_name,
+                'b_discount_remaining': team.b_discount_remaining,
+                'b_discount_name': team.b_discount_name,
+                'z_bonus_remaining': team.z_bonus_remaining,
+                'z_bonus_name': team.z_bonus_name,
+                'max_day_reached': team.max_day_reached,
+                'created_day': team.created_day,
+                '_seg_foods': team._seg_foods,
+                '_seg_steps': team._seg_steps,
+                '_seg_awards': team._seg_awards,
+                '_seg_days': team._seg_days,
+                '_seg_new_hexes': [[list(h) for h in seg] for seg in team._seg_new_hexes],
+                '_seg_exploration_hexes': [[list(h) for h in seg] for seg in team._seg_exploration_hexes],
+                '_seg_jumps': [[list(h) for h in seg] for seg in team._seg_jumps],
+                '_seg_path_nodes': [[list(h) for h in seg] for seg in team._seg_path_nodes],
+                '_seg_end_positions': [list(h) for h in team._seg_end_positions],
+                '_seg_action_sequence': [[(action, list(h) if isinstance(h, tuple) else h) for action, h in seg] for seg in team._seg_action_sequence],
+                '_seg_action_orders': team._seg_action_orders,
+                '_seg_lengths': team._seg_lengths,
+                '_seg_hex_costs': team._seg_hex_costs,
+                '_seg_is_fly_skill': team._seg_is_fly_skill,
+                '_seg_fly_skill_deltas': team._seg_fly_skill_deltas,
+                '_no_draw_edges': [[list(e[0]), list(e[1])] for e in team._no_draw_edges],
+            }
+
+        return {
+            'current_day': state_owner.current_day,
+            'current_food': state_owner.current_food,
+            'total_food': state_owner.total_food,
+            'total_reward': state_owner.total_reward,
+            'fly_skill_limit': state_owner.fly_skill_limit,
+            'team1': serialize_team(state_owner.team1),
+            'team2': serialize_team(state_owner.team2),
+            'team3': serialize_team(state_owner.team3),
+            'active_team_num': 1 if state_owner.active_team is state_owner.team1 else (2 if state_owner.active_team is state_owner.team2 else 3),
+            'all_visited_hexes': [list(h) for h in state_owner.all_visited_hexes],
+            'visited_g_lands': [list(h) for h in state_owner.visited_g_lands],
+            'day_records': state_owner.day_records,
+        }
+
     def _segment_iter(self, team):
         """Yield segment tuples with stable start/end resolution.
 
@@ -4974,18 +5075,34 @@ class PathfindingDemo:
         """Save game state to a JSON file."""
         try:
             import tkinter as tk
-            from tkinter import filedialog
+            from tkinter import filedialog, messagebox
             import os
             
             print('DEBUG: Starting save process...')
             
             root = tk.Tk()
             root.withdraw()
+
+            save_current_day = messagebox.askyesnocancel(
+                '保存范围',
+                (
+                    f'请选择要保存的路线范围：\n\n'
+                    f'是：只保存到当前 Day {self.current_day} 的路线\n'
+                    f'否：保存所有路线\n'
+                    f'取消：不保存'
+                ),
+            )
+            if save_current_day is None:
+                print('DEBUG: User cancelled save scope dialog')
+                root.destroy()
+                return
+            save_through_day = self.current_day if save_current_day else None
+            initial_file = f'game_save_day{self.current_day}.json' if save_current_day else 'game_save.json'
             
             file_path = filedialog.asksaveasfilename(
                 defaultextension='.json',
                 filetypes=[('JSON files', '*.json'), ('All files', '*.*')],
-                initialfile='game_save.json'
+                initialfile=initial_file
             )
             
             if not file_path:
@@ -4996,56 +5113,8 @@ class PathfindingDemo:
             print(f'DEBUG: Selected file path: {file_path}')
             print(f'DEBUG: File path exists before write: {os.path.exists(file_path)}')
             
-            # Serialize team data
-            def serialize_team(team):
-                if team is None:
-                    return None
-                return {
-                    'full_path': [list(h) for h in team.full_path],
-                    'origin': list(team.origin),
-                    'visited_hexes': [list(h) for h in team.visited_hexes],
-                    'free_exploration_hexes': [list(h) for h in team.free_exploration_hexes],
-                    'x_bonus_remaining': team.x_bonus_remaining,
-                    'x_bonus_name': team.x_bonus_name,
-                    'b_discount_remaining': team.b_discount_remaining,
-                    'b_discount_name': team.b_discount_name,
-                    'z_bonus_remaining': team.z_bonus_remaining,
-                    'z_bonus_name': team.z_bonus_name,
-                    'max_day_reached': team.max_day_reached,
-                    'created_day': team.created_day,
-                    '_seg_foods': team._seg_foods,
-                    '_seg_steps': team._seg_steps,
-                    '_seg_awards': team._seg_awards,
-                    '_seg_days': team._seg_days,
-                    '_seg_new_hexes': [[list(h) for h in seg] for seg in team._seg_new_hexes],
-                    '_seg_exploration_hexes': [[list(h) for h in seg] for seg in team._seg_exploration_hexes],
-                    '_seg_jumps': [[list(h) for h in seg] for seg in team._seg_jumps],
-                    '_seg_path_nodes': [[list(h) for h in seg] for seg in team._seg_path_nodes],
-                    '_seg_end_positions': [list(h) for h in team._seg_end_positions],
-                    '_seg_action_sequence': [[(action, list(h) if isinstance(h, tuple) else h) for action, h in seg] for seg in team._seg_action_sequence],
-                    '_seg_action_orders': team._seg_action_orders,
-                    '_seg_lengths': team._seg_lengths,
-                    '_seg_hex_costs': team._seg_hex_costs,
-                    '_seg_is_fly_skill': team._seg_is_fly_skill,
-                    '_seg_fly_skill_deltas': team._seg_fly_skill_deltas,
-                    '_no_draw_edges': [[list(e[0]), list(e[1])] for e in team._no_draw_edges],
-                }
-            
             print('DEBUG: Serializing game state...')
-            game_state = {
-                'current_day': self.current_day,
-                'current_food': self.current_food,
-                'total_food': self.total_food,
-                'total_reward': self.total_reward,
-                'fly_skill_limit': self.fly_skill_limit,
-                'team1': serialize_team(self.team1),
-                'team2': serialize_team(self.team2),
-                'team3': serialize_team(self.team3),
-                'active_team_num': 1 if self.active_team is self.team1 else (2 if self.active_team is self.team2 else 3),
-                'all_visited_hexes': [list(h) for h in self.all_visited_hexes],
-                'visited_g_lands': [list(h) for h in self.visited_g_lands],
-                'day_records': self.day_records,
-            }
+            game_state = self._build_game_state_for_save(save_through_day)
             
             print(f'DEBUG: Writing to file: {file_path}')
             with open(file_path, 'w') as f:
@@ -5054,7 +5123,8 @@ class PathfindingDemo:
             print(f'DEBUG: File write complete. File size: {os.path.getsize(file_path)} bytes')
             
             root.destroy()
-            self._status_msg = f'Game saved to {os.path.basename(file_path)}'
+            scope_text = f'Day {self.current_day}' if save_current_day else 'all routes'
+            self._status_msg = f'Game saved ({scope_text}) to {os.path.basename(file_path)}'
             self._draw()
             print(f'Game saved successfully to {file_path}')
         except Exception as e:

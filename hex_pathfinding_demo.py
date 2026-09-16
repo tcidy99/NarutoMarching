@@ -61,6 +61,7 @@ from matplotlib.transforms import Affine2D
 from matplotlib.widgets import Button
 from matplotlib.colors import hex2color
 import numpy as np
+import copy
 import csv
 import json
 import heapq
@@ -563,6 +564,8 @@ class PathfindingDemo:
         self._edit_seg_button_timer = None
         self._edit_seg_button_flash_state = False
         self._day_edit_context = None
+        self._enclosure_mode = False
+        self._enclosure_start_day = None
         self._show_future_paths = True
         
         # Initialize day records for days 1-TOTAL_DAYS with proper remaining steps
@@ -684,6 +687,12 @@ class PathfindingDemo:
         self._btn_edit_seg = Button(bax_edit_seg, '路径编辑', color='#ffe0b3')
         self._btn_edit_seg.label.set_fontsize(12)
         self._btn_edit_seg.on_clicked(lambda _evt: self._toggle_segment_edit_mode())
+
+        # Enclosure mode: freehand future-route planning after all Tent/G-g goals.
+        bax_enclosure = self.fig.add_axes([0.557, 0.002, 0.084, 0.025])
+        self._btn_enclosure = Button(bax_enclosure, '圈地模式', color='#d8f0c8')
+        self._btn_enclosure.label.set_fontsize(12)
+        self._btn_enclosure.on_clicked(lambda _evt: self._toggle_enclosure_mode())
 
         # Export day sheets to workbook template
         bax_export_xlsx = self.fig.add_axes([0.647, 0.002, 0.084, 0.025])
@@ -1005,7 +1014,7 @@ class PathfindingDemo:
                         food_estimate += movement_cost + challenge_cost
                 
                 # Check if we have enough food
-                if food_estimate > self.current_food:
+                if (not self._enclosure_mode) and food_estimate > self.current_food:
                     return  # Not enough food, don't show preview
                 
                 # Path is reachable - draw it
@@ -1192,6 +1201,66 @@ class PathfindingDemo:
             payload[field_name] = list(value[start_idx:]) if value is not None else []
         return payload
 
+    def _snapshot_team_state(self, team):
+        """Deep-copy every attribute a route edit can mutate, for later rollback."""
+        if team is None:
+            return None
+        fields = self._segment_field_names() + [
+            'full_path', 'visited_hexes', 'free_exploration_hexes',
+            'x_bonus_remaining', 'x_bonus_name', 'b_discount_remaining', 'b_discount_name',
+            'z_bonus_remaining', 'z_bonus_name', 'max_day_reached', '_no_draw_edges',
+        ]
+        return {name: copy.deepcopy(getattr(team, name)) for name in fields if hasattr(team, name)}
+
+    def _restore_team_state(self, team, snapshot):
+        """Undo a route edit's mutations on one team using a prior _snapshot_team_state result."""
+        if team is None or snapshot is None:
+            return
+        for name, value in snapshot.items():
+            setattr(team, name, copy.deepcopy(value))
+
+    def _snapshot_shared_state(self):
+        """Capture the cross-team derived state a route edit rebuilds, for later rollback."""
+        return {
+            'all_visited_hexes': set(self.all_visited_hexes),
+            'visited_g_lands': set(self.visited_g_lands),
+            'day_records': copy.deepcopy(self.day_records),
+            'next_action_order': self._next_action_order,
+            'current_day': self.current_day,
+        }
+
+    def _restore_shared_state(self, snapshot):
+        """Undo a route edit's mutations on shared engine state using a prior snapshot."""
+        self.all_visited_hexes = set(snapshot['all_visited_hexes'])
+        self.visited_g_lands = set(snapshot['visited_g_lands'])
+        self.day_records = copy.deepcopy(snapshot['day_records'])
+        self._next_action_order = snapshot['next_action_order']
+        self.current_day = snapshot['current_day']
+
+    def _compute_tent_and_g_capture_days(self):
+        """Map every captured Tent/G/g hex (any team) to the day it was first captured.
+
+        Used to enforce that a route edit is not allowed to shift which day a Tent or
+        G/g hex was reached on, since that day drives Tent-degrade scheduling and the
+        global G/g completion timeline other segments' costs depend on.
+        """
+        days = {}
+        for team in (self.team1, self.team2, self.team3):
+            if team is None:
+                continue
+            for seg_day, seg_new in zip(team._seg_days, team._seg_new_hexes):
+                for h in seg_new:
+                    h = tuple(h)
+                    terrain = _terrain(*h)
+                    is_tent = terrain.get('name') == 'Tent'
+                    is_g = h in self.all_g_lands
+                    if not (is_tent or is_g):
+                        continue
+                    d = int(seg_day)
+                    if h not in days or d < days[h]:
+                        days[h] = d
+        return days
+
     def _append_team_segment_payload(self, team, payload):
         """Append captured per-segment payload back to a team."""
         for field_name in self._segment_field_names():
@@ -1294,6 +1363,14 @@ class PathfindingDemo:
         # Keep only history up to yesterday. The buff snapshot must represent
         # the state at the start of the edited day, not the old route's final
         # state after later days have already consumed more charges.
+        pre_edit_team_snapshots = {
+            team_num: self._snapshot_team_state(t)
+            for team_num, t in ((1, self.team1), (2, self.team2), (3, self.team3))
+            if t is not None
+        }
+        pre_edit_shared_snapshot = self._snapshot_shared_state()
+        pre_edit_tent_g_days = self._compute_tent_and_g_capture_days()
+
         self._truncate_team_history_from_segment(team, first_day_idx)
         self._derive_team_buff_state(team)
         bxz_state_before_edit = {
@@ -1315,6 +1392,9 @@ class PathfindingDemo:
             'pending_future_payload': pending_future_payload,
             'future_preview_segments': future_preview_segments,
             'bxz_state_before_edit': bxz_state_before_edit,
+            'pre_edit_team_snapshots': pre_edit_team_snapshots,
+            'pre_edit_shared_snapshot': pre_edit_shared_snapshot,
+            'pre_edit_tent_g_days': pre_edit_tent_g_days,
         }
         self._segment_edit_mode = True
         self._segment_edit_targets = []
@@ -1363,15 +1443,23 @@ class PathfindingDemo:
         # Re-attach untouched future days, re-derive every later segment's
         # capture/revisit bookkeeping against the redrawn route (see
         # _recost_segments_from_day), then rebalance and rebuild shared state.
-        tail_start = len(team._seg_days)
         self._append_team_segment_payload(team, ctx['pending_future_payload'])
-        # The re-attached tail logically follows the redraw, so give it fresh
-        # cross-team order ids (its stored ones predate the redraw).
+        # Freshly drawn segments (for start_day..end_day) already received new,
+        # strictly-increasing order ids as they were clicked in, and the
+        # re-attached tail's own days are all > end_day, so day-based sort
+        # already places the tail after the redraw regardless of its order
+        # value. Do NOT reassign the tail's order ids here: they encode the
+        # true chronological interleaving with OTHER teams' segments that
+        # share those same future days, and overwriting them with a fresh,
+        # globally-incrementing sequence can invert that cross-team ordering.
+        # _recost_segments_from_day sorts by (day, action_order) to replay
+        # history and track global state (e.g. G/g completion) - scrambling
+        # a tail segment's order relative to another team's same-day segment
+        # can flip which one is considered to have happened "first", which
+        # then corrupts the G/g-completion (and buff) state used to price
+        # both segments.
         self._normalize_missing_action_orders()
         self._ensure_team_segment_action_orders(team)
-        for j in range(tail_start, len(team._seg_days)):
-            team._seg_action_orders[j] = self._next_action_order
-            self._next_action_order += 1
         self._recost_segments_from_day(day)
         for t in (self.team1, self.team2, self.team3):
             if t is not None:
@@ -1379,6 +1467,60 @@ class PathfindingDemo:
         self._rebalance_all_teams_from_day(day)
         self._rebuild_shared_derived_state_from_segments()
         self._rebuild_day_records()
+
+        # Tent-degrade scheduling and the global G/g-completion timeline both depend
+        # on which day each Tent/G/g hex was reached. Reject the edit if the redraw
+        # (or the resulting rebalance/split of later segments) shifted any of them.
+        tent_g_days_before = ctx.get('pre_edit_tent_g_days', {})
+        tent_g_days_after = self._compute_tent_and_g_capture_days()
+        changed_hexes = sorted(
+            h for h, old_day in tent_g_days_before.items()
+            if tent_g_days_after.get(h) != old_day
+        )
+        if changed_hexes:
+            pre_edit_team_snapshots = ctx.get('pre_edit_team_snapshots', {})
+            for team_num, t in ((1, self.team1), (2, self.team2), (3, self.team3)):
+                self._restore_team_state(t, pre_edit_team_snapshots.get(team_num))
+            pre_edit_shared_snapshot = ctx.get('pre_edit_shared_snapshot')
+            if pre_edit_shared_snapshot is not None:
+                self._restore_shared_state(pre_edit_shared_snapshot)
+
+            self._segment_edit_mode = False
+            self._segment_edit_targets = []
+            self._segment_edit_selected_days = set()
+            self._segment_edit_focus_seg_idx = None
+            self._day_edit_context = None
+            example = changed_hexes[0]
+            self._status_msg = (
+                f'Edit rejected: it would move Tent/G-g hex {example} '
+                f'(and {len(changed_hexes) - 1} other hex(es)) to a different day. '
+                f'Reverted to the state before this edit.'
+            ) if len(changed_hexes) > 1 else (
+                f'Edit rejected: it would move Tent/G-g hex {example} to a different day. '
+                f'Reverted to the state before this edit.'
+            )
+            try:
+                import tkinter as tk
+                from tkinter import messagebox
+                root = tk.Tk()
+                root.withdraw()
+                root.lift()
+                root.attributes('-topmost', True)
+                root.update()
+                messagebox.showerror(
+                    'Edit Rejected',
+                    (
+                        f'This route edit would change the day on which {len(changed_hexes)} '
+                        f'Tent/G-g hex(es) are captured (e.g. {example}).\n\n'
+                        'Route edits are not allowed to move Tent or G/g capture days, since '
+                        'other segments\' costs and schedules depend on them.\n\n'
+                        'The edit has been reverted to the state before it started.'
+                    ),
+                )
+                root.destroy()
+            except Exception:
+                pass
+            return False
 
         self._segment_edit_mode = False
         self._segment_edit_targets = []
@@ -1389,7 +1531,7 @@ class PathfindingDemo:
         self._status_msg = f'Days {day}-{day_end} edit completed. Future segments reconnected successfully.'
         return True
 
-    def _rebalance_team_segment_days_from(self, team, start_day):
+    def _rebalance_team_segment_days_from(self, team, start_day, preserve_future_days=True):
         """Reassign segment days from start_day onward to avoid per-day step overflow.
 
         Segments stay in original order; when a day runs out of steps, remaining segments
@@ -1444,8 +1586,42 @@ class PathfindingDemo:
                 seg_idx += 1
                 continue
 
+            # Preserve any slack the existing schedule had (e.g. a day where the
+            # team didn't use all its steps/food): never pull a segment onto an
+            # earlier day than it already recorded, only catch up to it. This
+            # keeps the rebalance a no-op for an untouched route instead of
+            # re-flowing everything as tightly as the greedy budget allows,
+            # which would otherwise shift every later segment - and any
+            # Tent/G-g hex on it - to an earlier day for no real reason.
+            preferred_day = int(team._seg_days[seg_idx]) if preserve_future_days else current_day
+            while current_day < preferred_day:
+                current_day += 1
+                step_bank = min(step_bank + 6, 18)
+                day_food_remaining = day_food_remaining + 1600 - other_food_by_day.get(current_day, 0)
+
             seg_steps = team._seg_steps[seg_idx]
             seg_food = team._seg_foods[seg_idx]
+
+            group_end = seg_idx
+            group_steps = 0
+            group_food = 0
+            while group_end < len(team._seg_days) and int(team._seg_days[group_end]) == preferred_day:
+                group_steps += team._seg_steps[group_end]
+                group_food += team._seg_foods[group_end]
+                group_end += 1
+
+            if group_end > seg_idx + 1 and (
+                (group_steps <= 0 or step_bank >= group_steps)
+                and (group_food <= 0 or day_food_remaining >= group_food)
+            ):
+                for j in range(seg_idx, group_end):
+                    team._seg_days[j] = current_day
+                step_bank -= group_steps
+                if step_bank > 18:
+                    step_bank = 18
+                day_food_remaining -= group_food
+                seg_idx = group_end
+                continue
 
             if seg_steps > 0 or seg_food > 0:
                 # Keep trying on each day: first split if partially fit, otherwise advance day.
@@ -1717,10 +1893,112 @@ class PathfindingDemo:
 
         return False
 
-    def _rebalance_all_teams_from_day(self, start_day, max_passes=8):
+    def _rebalance_enclosure_segments_from_day(self, start_day):
+        """Distribute enclosure-mode future routes across teams day by day."""
+        teams = [t for t in (self.team1, self.team2, self.team3) if t is not None]
+        if not teams:
+            return
+
+        start_day = max(1, int(start_day))
+
+        food_remaining = 6800
+        for day in range(1, start_day):
+            used = 0
+            for team in teams:
+                for seg_food, seg_day in zip(team._seg_foods, team._seg_days):
+                    if int(seg_day) == day:
+                        used += seg_food
+            food_remaining = food_remaining - used + 1600
+
+        step_bank = {}
+        next_idx = {}
+        for team in teams:
+            bank = 0
+            for day in range(team.created_day, max(start_day, team.created_day)):
+                bank = min(bank + 6, 18)
+                day_used = 0
+                for seg_idx, seg_day in enumerate(team._seg_days):
+                    if int(seg_day) == day:
+                        day_used += team._seg_steps[seg_idx]
+                bank -= day_used
+            step_bank[team] = bank
+
+            idx = 0
+            while idx < len(team._seg_days) and int(team._seg_days[idx]) < start_day:
+                idx += 1
+            next_idx[team] = idx
+
+        current_day = start_day
+        for team in teams:
+            if team.created_day <= current_day:
+                step_bank[team] = min(step_bank[team] + 6, 18)
+
+        while any(next_idx[team] < len(team._seg_days) for team in teams):
+            placed_today = False
+
+            while True:
+                placed_this_round = False
+                for team in teams:
+                    idx = next_idx[team]
+                    if idx >= len(team._seg_days) or team.created_day > current_day:
+                        continue
+
+                    seg_steps = team._seg_steps[idx]
+                    seg_food = team._seg_foods[idx]
+                    if not (
+                        (seg_steps <= 0 or step_bank[team] >= seg_steps)
+                        and (seg_food <= 0 or food_remaining >= seg_food)
+                    ):
+                        did_split = self._split_team_segment_by_step_budget(
+                            team,
+                            idx,
+                            max(step_bank[team], 0),
+                            max(food_remaining, 0),
+                        )
+                        if did_split:
+                            seg_steps = team._seg_steps[idx]
+                            seg_food = team._seg_foods[idx]
+
+                    if (
+                        (seg_steps <= 0 or step_bank[team] >= seg_steps)
+                        and (seg_food <= 0 or food_remaining >= seg_food)
+                    ):
+                        team._seg_days[idx] = current_day
+                        step_bank[team] -= seg_steps
+                        if step_bank[team] > 18:
+                            step_bank[team] = 18
+                        food_remaining -= seg_food
+                        next_idx[team] += 1
+                        placed_this_round = True
+                        placed_today = True
+
+                if not placed_this_round:
+                    break
+
+            if not placed_today:
+                # A single oversized segment may need future accumulated food/steps.
+                pass
+
+            current_day += 1
+            food_remaining += 1600
+            for team in teams:
+                if team.created_day <= current_day:
+                    step_bank[team] = min(step_bank[team] + 6, 18)
+
+        for team in teams:
+            if team._seg_days:
+                team.max_day_reached = max(team.created_day, max(team._seg_days))
+            else:
+                team.max_day_reached = team.created_day
+
+    def _rebalance_all_teams_from_day(self, start_day, max_passes=8, preserve_future_days=True):
         """Iteratively rebalance all teams from a day to satisfy shared food and team steps."""
         teams = [t for t in (self.team1, self.team2, self.team3) if t is not None]
         if not teams:
+            return
+
+        if not preserve_future_days:
+            self._rebalance_enclosure_segments_from_day(start_day)
             return
 
         rebalance_start = max(1, int(start_day))
@@ -1729,7 +2007,11 @@ class PathfindingDemo:
             before = [tuple(t._seg_days) for t in teams]
 
             for team in teams:
-                self._rebalance_team_segment_days_from(team, max(rebalance_start, team.created_day))
+                self._rebalance_team_segment_days_from(
+                    team,
+                    max(rebalance_start, team.created_day),
+                    preserve_future_days=preserve_future_days,
+                )
 
             has_step_overflow = any(
                 self._team_has_step_overflow_from(team, max(rebalance_start, team.created_day))
@@ -1745,6 +2027,11 @@ class PathfindingDemo:
 
     def _toggle_segment_edit_mode(self):
         """Toggle UI mode for selecting a segment on the current team/day."""
+        if self._enclosure_mode:
+            self._status_msg = '请先退出圈地模式，再使用路径编辑。'
+            self._draw()
+            return
+
         # In active day-edit redraw mode, user must reconnect to tomorrow anchor first.
         if self._segment_edit_mode and self._day_edit_context is not None:
             ctx = self._day_edit_context
@@ -1847,6 +2134,82 @@ class PathfindingDemo:
             self._btn_edit_seg.hovercolor = '#ffd199'
             self._btn_edit_seg.label.set_color('black')
 
+    def _all_tent_and_g_complete_day(self):
+        required = set(self.all_g_lands)
+        for ir in range(ROWS):
+            for ic in range(COLS):
+                if _terrain(ir, ic).get('name') == 'Tent':
+                    required.add((ir, ic))
+        capture_days = self._compute_tent_and_g_capture_days()
+        if not required or any(hex_pos not in capture_days for hex_pos in required):
+            return None
+        return max(capture_days[hex_pos] for hex_pos in required)
+
+    def _can_start_enclosure_mode(self):
+        complete_day = self._all_tent_and_g_complete_day()
+        if complete_day is None:
+            return False, 'T and G/g lands are not all captured yet.'
+        if self.current_day < complete_day + 1:
+            return False, f'圈地模式需在 T 和 G/g 全部拿满后的第二天开启（最早 Day {complete_day + 1}）。'
+        return True, complete_day
+
+    def _update_enclosure_button_state(self):
+        if not hasattr(self, '_btn_enclosure') or self._btn_enclosure is None:
+            return
+        if self._enclosure_mode:
+            self._btn_enclosure.label.set_text('退出圈地')
+            self._btn_enclosure.color = '#b8e986'
+            self._btn_enclosure.hovercolor = '#a8df70'
+            self._btn_enclosure.label.set_color('#1f5b00')
+        else:
+            self._btn_enclosure.label.set_text('圈地模式')
+            self._btn_enclosure.color = '#d8f0c8'
+            self._btn_enclosure.hovercolor = '#c8e8b8'
+            self._btn_enclosure.label.set_color('black')
+
+    def _toggle_enclosure_mode(self):
+        if self._enclosure_mode:
+            self._finish_enclosure_mode()
+            return
+        if self._segment_edit_mode:
+            self._status_msg = '请先退出路径编辑，再开启圈地模式。'
+            self._draw()
+            return
+        can_start, detail = self._can_start_enclosure_mode()
+        if not can_start:
+            self._status_msg = detail
+            self._draw()
+            return
+        self._enclosure_mode = True
+        self._enclosure_start_day = self.current_day
+        self._status_msg = f'圈地模式已开启：可自由画路线，退出时将从 Day {self._enclosure_start_day} 自动分配到未来天数。'
+        self._draw()
+
+    def _finish_enclosure_mode(self):
+        start_day = self._enclosure_start_day or self.current_day
+        self._recost_segments_from_day(start_day)
+        for team in (self.team1, self.team2, self.team3):
+            if team is not None:
+                self._derive_team_buff_state(team)
+        self._rebalance_all_teams_from_day(start_day, preserve_future_days=False)
+        self._rebuild_shared_derived_state_from_segments()
+        self._rebuild_day_records()
+
+        has_step_overflow = any(
+            self._team_has_step_overflow_from(team, max(start_day, team.created_day))
+            for team in (self.team1, self.team2, self.team3)
+            if team is not None
+        )
+        has_food_deficit = self._has_global_food_deficit_from_segments()
+        self._enclosure_mode = False
+        self._enclosure_start_day = None
+        if has_step_overflow or has_food_deficit:
+            self._status_msg = '圈地模式已退出，但未来天数仍有步数或粮草超支，请减少路线或继续调整。'
+        else:
+            self._status_msg = f'圈地模式已退出：路线已从 Day {start_day} 起自动分配到未来天数。'
+        self._auto_save_game()
+        self._draw()
+
     def _build_segment_edit_targets(self):
         """Build clickable segment markers for current team/day in edit mode."""
         self._segment_edit_targets = []
@@ -1923,7 +2286,7 @@ class PathfindingDemo:
 
         self._draw()
 
-    def _recost_segments_from_day(self, start_day):
+    def _recost_segments_from_day(self, start_day, settle_exploration=False):
         """Re-derive per-hex bookkeeping for every segment on/after start_day.
 
         A segment's records (which hexes were fresh captures vs. 10-food revisits,
@@ -1964,7 +2327,10 @@ class PathfindingDemo:
             z_bonus_remaining=0,
             z_bonus_name=None,
         )
-        recost_buffs = {team: no_buff for team in teams}
+        recost_buffs = {
+            team: types.SimpleNamespace(**self._derive_team_buff_state_before_day(team, start_day))
+            for team in teams
+        }
         if self._day_edit_context is not None:
             edit_team = self._day_edit_context.get('team')
             saved_bxz = self._day_edit_context.get('bxz_state_before_edit', {})
@@ -2086,8 +2452,10 @@ class PathfindingDemo:
             seen_in_seg = set()
             for k, h in enumerate(nodes):
                 stored = tuple(stored_costs[prefix + k]) if prefix + k < len(stored_costs) else None
-                if h in stored_expl:
+                if h in stored_expl and not settle_exploration:
                     kind = 'explore'
+                elif h in stored_expl:
+                    kind = 'new'
                 elif h in stored_new:
                     kind = 'new'
                 elif h in stored_jump:
@@ -3211,9 +3579,18 @@ class PathfindingDemo:
         was waived consume one X charge each (not on fly moves), and capturing
         an X/B/Z land - as the segment's final hex or as a hex settled on
         departure - resets that buff to its full count."""
+        state = self._derive_team_buff_state_before_day(team, None)
+        team.x_bonus_remaining, team.x_bonus_name = state['x_bonus_remaining'], state['x_bonus_name']
+        team.b_discount_remaining, team.b_discount_name = state['b_discount_remaining'], state['b_discount_name']
+        team.z_bonus_remaining, team.z_bonus_name = state['z_bonus_remaining'], state['z_bonus_name']
+
+    def _derive_team_buff_state_before_day(self, team, day):
+        """Return a team's B/X/Z counters after replaying segments before day."""
         x = b = z = 0
         xn = bn = zn = None
         for i in range(len(team._seg_days)):
+            if day is not None and int(team._seg_days[i]) >= int(day):
+                continue
             new_hexes = [tuple(h) for h in team._seg_new_hexes[i]]
             nodes = [tuple(h) for h in team._seg_path_nodes[i]] if i < len(team._seg_path_nodes) else []
             costs = team._seg_hex_costs[i] if i < len(team._seg_hex_costs) else []
@@ -3247,9 +3624,14 @@ class PathfindingDemo:
                     b, bn = B_DISCOUNT_MAP[name], name
                 elif name in Z_BONUS_MAP:
                     z, zn = Z_BONUS_MAP[name], name
-        team.x_bonus_remaining, team.x_bonus_name = x, xn
-        team.b_discount_remaining, team.b_discount_name = b, bn
-        team.z_bonus_remaining, team.z_bonus_name = z, zn
+        return {
+            'b_discount_remaining': b,
+            'b_discount_name': bn,
+            'x_bonus_remaining': x,
+            'x_bonus_name': xn,
+            'z_bonus_remaining': z,
+            'z_bonus_name': zn,
+        }
 
     def _activate_land_buffs(self, hex_pos):
         """Start the X/B/Z buff granted by capturing hex_pos (if it is one of
@@ -3828,7 +4210,7 @@ class PathfindingDemo:
                 '_btn_undo', '_btn_reset', '_btn_fly', '_btn_show_future',
                 '_btn_chk_labels', '_btn_prev_day', '_btn_next_day',
                 '_btn_map_view', '_btn_screenshot', '_btn_load', '_btn_save',
-                '_btn_global_stat', '_btn_edit_seg', '_btn_export_xlsx',
+                '_btn_global_stat', '_btn_edit_seg', '_btn_enclosure', '_btn_export_xlsx',
             )
             button_mask_padding = 3
             for button_name in button_names:
@@ -3909,6 +4291,8 @@ class PathfindingDemo:
         self._has_zoomed = False  # Reset zoom state
         self.fly_skill_limit = 1  # Reset global fly skill limit to 1
         self._next_action_order = 0
+        self._enclosure_mode = False
+        self._enclosure_start_day = None
         
         # Reset shared state
         self.all_visited_hexes = {team1_origin}
@@ -4712,6 +5096,8 @@ class PathfindingDemo:
             self.all_visited_hexes = set(tuple(h) for h in game_state['all_visited_hexes'])
             self.visited_g_lands = set(tuple(h) for h in game_state['visited_g_lands'])
             self.day_records = game_state['day_records']
+            self._enclosure_mode = False
+            self._enclosure_start_day = None
             
             # Set active team
             active_team_num = game_state['active_team_num']
@@ -5090,7 +5476,7 @@ class PathfindingDemo:
                 self.current_day = self._day_edit_context['day']
 
             day_locked, last_move_day = self._is_active_team_locked_by_day()
-            if day_locked and not self._is_active_day_edit():
+            if day_locked and not self._is_active_day_edit() and not self._enclosure_mode:
                 self._status_msg = (
                     f"Cannot draw path: current day ({self.current_day}) is before "
                     f"this team's last movement day ({last_move_day})."
@@ -5125,7 +5511,7 @@ class PathfindingDemo:
                     # (challenge food + reward + 1 step) when the team leaves it.
                     # Portals (step 0), Tents and other step<=0 terrain keep the
                     # immediate handling below.
-                    defer_capture = is_new_hex and t.get('step', 1) > 0
+                    defer_capture = (not self._enclosure_mode) and is_new_hex and t.get('step', 1) > 0
 
                     # Flying off a still-unsettled probe / deferred-fly hex settles
                     # it, exactly like walking off it does.
@@ -5205,7 +5591,9 @@ class PathfindingDemo:
                         self.active_team.max_day_reached = seg_day
                     
                     # Check if resources are insufficient
-                    allow_borrow_edit_resources = self._is_active_day_edit() and self.current_day == self._day_edit_context['day']
+                    allow_borrow_edit_resources = self._enclosure_mode or (
+                        self._is_active_day_edit() and self.current_day == self._day_edit_context['day']
+                    )
                     if (not allow_borrow_edit_resources) and self.current_food < seg_food:
                         steps_avail = self._get_team_steps_for_day(self.active_team, self.current_day)
                         raise RuntimeError(self._build_not_enough_food_message(seg_food, steps_avail))
@@ -5244,9 +5632,10 @@ class PathfindingDemo:
                         + [(landing_food, landing_award, 0)])
                     self.active_team._seg_is_fly_skill.append(True)  # Mark as fly skill move
                     
-                    self.current_food -= seg_food
-                    self.total_food += seg_food
-                    self.total_reward += seg_award
+                    if not self._enclosure_mode:
+                        self.current_food -= seg_food
+                        self.total_food += seg_food
+                        self.total_reward += seg_award
                     
                     # Decrement GLOBAL fly skill limit
                     self.fly_skill_limit -= 1
@@ -5336,7 +5725,8 @@ class PathfindingDemo:
                         self.current_day = self.active_team.max_day_reached
                         self._status_msg += f' [Auto-switched to Day {self.current_day}]'
                     
-                    self._rebuild_day_records()
+                    if not self._enclosure_mode:
+                        self._rebuild_day_records()
 
                     if self._is_active_day_edit():
                         self._finalize_day_segment_edit_if_connected()
@@ -5362,6 +5752,10 @@ class PathfindingDemo:
 
             current = self.active_team.full_path[-1]
             if pos == current:
+                if self._enclosure_mode:
+                    self._status_msg = '圈地模式中：点击其他地块继续画路线。'
+                    self._draw()
+                    return
                 if self._confirm_settle_current_exploration():
                     return
                 return
@@ -5406,12 +5800,12 @@ class PathfindingDemo:
                 and not self._is_hex_settled(current_pos)
             )
 
-            # Get the display steps for the current viewing day (use this for all step checks)
-            steps_available_for_day = self._get_team_steps_for_day(self.active_team, self.current_day)
+            # 圈地模式只记录路线，退出时再统一分配到未来 days。
+            steps_available_for_day = 0 if self._enclosure_mode else self._get_team_steps_for_day(self.active_team, self.current_day)
 
             # Check for free exploration mode: if team has 0 steps but can move to adjacent untaken hex
             free_exploration = False
-            if steps_available_for_day == 0 and self.active_team.x_bonus_remaining <= 0 and len(added) == 1:
+            if (not self._enclosure_mode) and steps_available_for_day == 0 and self.active_team.x_bonus_remaining <= 0 and len(added) == 1:
                 hex_to_explore = added[0]
                 if hex_to_explore not in self.all_visited_hexes:
                     explore_terrain = _terrain(*hex_to_explore)
@@ -5579,17 +5973,23 @@ class PathfindingDemo:
             
             if free_exploration and not needs_day_check_for_departure:
                 # Check if resources are insufficient
-                allow_borrow_edit_resources = self._is_active_day_edit() and seg_day == self._day_edit_context['day']
+                allow_borrow_edit_resources = self._enclosure_mode or (
+                    self._is_active_day_edit() and seg_day == self._day_edit_context['day']
+                )
                 if (not allow_borrow_edit_resources) and self.current_food < seg_food:
                     raise RuntimeError(self._build_not_enough_food_message(seg_food, steps_available_for_day))
             elif free_exploration and needs_day_check_for_departure:
                 # Check if resources are insufficient
-                allow_borrow_edit_resources = self._is_active_day_edit() and seg_day == self._day_edit_context['day']
+                allow_borrow_edit_resources = self._enclosure_mode or (
+                    self._is_active_day_edit() and seg_day == self._day_edit_context['day']
+                )
                 if (not allow_borrow_edit_resources) and self.current_food < seg_food:
                     raise RuntimeError(self._build_not_enough_food_message(seg_food, steps_available_for_day))
             else:
                 # Check if resources are insufficient
-                allow_borrow_edit_resources = self._is_active_day_edit() and seg_day == self._day_edit_context['day']
+                allow_borrow_edit_resources = self._enclosure_mode or (
+                    self._is_active_day_edit() and seg_day == self._day_edit_context['day']
+                )
                 if (not allow_borrow_edit_resources) and self.current_food < seg_food:
                     raise RuntimeError(self._build_not_enough_food_message(seg_food, steps_available_for_day))
                 if (not allow_borrow_edit_resources) and steps_available_for_day < steps_required_for_check:
@@ -5631,10 +6031,11 @@ class PathfindingDemo:
             self.active_team._seg_is_fly_skill.append(False)  # Normal pathfinding, not fly skill
             self.active_team._seg_fly_skill_deltas.append(0)
             
-            self.current_food -= seg_food
-            self.active_team.steps -= seg_steps
-            self.total_food += seg_food
-            self.total_reward += seg_award
+            if not self._enclosure_mode:
+                self.current_food -= seg_food
+                self.active_team.steps -= seg_steps
+                self.total_food += seg_food
+                self.total_reward += seg_award
             
             self.active_team.visited_hexes.update(new_hexes)
             self.all_visited_hexes.update(new_hexes)
@@ -5742,7 +6143,8 @@ class PathfindingDemo:
             # connected() below already calls _rebalance_all_teams_from_day() once,
             # after the full redraw is complete and reconnected - that single call
             # is sufficient and stable.
-            self._rebuild_day_records()
+            if not self._enclosure_mode:
+                self._rebuild_day_records()
 
             if self._is_active_day_edit():
                 self._finalize_day_segment_edit_if_connected()
@@ -6475,6 +6877,7 @@ class PathfindingDemo:
         # Update team button labels with remaining steps
         self._update_team_button_labels()
         self._update_segment_edit_button_state()
+        self._update_enclosure_button_state()
         self._update_edit_seg_blink_state()
 
         self._draw_team_action_symbols()

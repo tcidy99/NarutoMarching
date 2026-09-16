@@ -6,10 +6,13 @@ hex_pathfinding_demo.py unchanged while an RL environment is built on top of
 these deterministic action descriptions.
 """
 
+import sys
 from dataclasses import dataclass
 from enum import Enum
+from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from hex_pathfinding_demo import RAW_MAP, ROWS, COLS, _astar, _neighbors, _passable, _terrain
 
 Hex = Tuple[int, int]

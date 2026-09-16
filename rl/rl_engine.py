@@ -5,9 +5,12 @@ without opening figures, disables presentation-only callbacks, and exposes a
 small reset/step interface for deterministic differential testing.
 """
 
+import sys
 from copy import deepcopy
+from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import hex_pathfinding_demo as game
 from rl_playground import ActionType, RouteAction
 
@@ -166,6 +169,8 @@ class NarutoMarchingEngine(game.PathfindingDemo):
         self._edit_seg_button_timer = None
         self._segment_edit_mode = False
         self._day_edit_context = None
+        self._enclosure_mode = False
+        self._enclosure_start_day = None
         self._segment_edit_selected_days = set()
         self._segment_edit_targets = []
         self._segment_edit_focus_seg_idx = None

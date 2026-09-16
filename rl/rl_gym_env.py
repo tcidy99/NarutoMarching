@@ -1,9 +1,12 @@
 """Optional Gymnasium adapter for the Naruto Marching headless engine."""
 
+import sys
+from pathlib import Path
 from typing import Any, Dict, Optional
 
 import numpy as np
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from rl_engine import NarutoMarchingEngine
 from rl_playground import ActionType, RouteAction, plan_move
 import hex_pathfinding_demo as game

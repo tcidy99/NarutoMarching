@@ -1,10 +1,12 @@
 """Replay ordinary archive segments across all teams in action order."""
 
 import json
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, Optional
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import hex_pathfinding_demo as game
 from rl_engine import NarutoMarchingEngine
 from rl_playground import ActionType, RouteAction

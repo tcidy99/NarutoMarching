@@ -1,5 +1,9 @@
 """Differential smoke tests for the GUI-logic-backed headless engine."""
 
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from rl_engine import NarutoMarchingEngine
 from rl_playground import ActionType, RouteAction
 import hex_pathfinding_demo as game

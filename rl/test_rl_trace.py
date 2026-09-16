@@ -1,8 +1,10 @@
 """Golden-trace round-trip and jump visibility tests."""
 
+import sys
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import hex_pathfinding_demo as game
 from rl_playground import ActionType, RouteAction
 from rl_trace import record_trace, replay_trace, save_trace

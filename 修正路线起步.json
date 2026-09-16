@@ -1,8 +1,8 @@
 {
-  "current_day": 6,
-  "current_food": 5580,
-  "total_food": 9220,
-  "total_reward": 10145,
+  "current_day": 5,
+  "current_food": 5930,
+  "total_food": 7270,
+  "total_reward": 9395,
   "fly_skill_limit": 1,
   "team1": {
     "full_path": [
@@ -2153,50 +2153,6 @@
       [
         45,
         25
-      ],
-      [
-        46,
-        24
-      ],
-      [
-        47,
-        24
-      ],
-      [
-        47,
-        23
-      ],
-      [
-        48,
-        23
-      ],
-      [
-        49,
-        23
-      ],
-      [
-        50,
-        23
-      ],
-      [
-        51,
-        23
-      ],
-      [
-        52,
-        23
-      ],
-      [
-        53,
-        23
-      ],
-      [
-        54,
-        23
-      ],
-      [
-        55,
-        22
       ]
     ],
     "origin": [
@@ -2206,15 +2162,7 @@
     "visited_hexes": [
       [
         46,
-        24
-      ],
-      [
-        46,
         30
-      ],
-      [
-        49,
-        23
       ],
       [
         46,
@@ -2223,10 +2171,6 @@
       [
         48,
         39
-      ],
-      [
-        53,
-        23
       ],
       [
         49,
@@ -2257,16 +2201,8 @@
         26
       ],
       [
-        48,
-        23
-      ],
-      [
         19,
         51
-      ],
-      [
-        55,
-        22
       ],
       [
         49,
@@ -2275,18 +2211,6 @@
       [
         45,
         27
-      ],
-      [
-        47,
-        24
-      ],
-      [
-        50,
-        23
-      ],
-      [
-        52,
-        23
       ],
       [
         50,
@@ -2301,20 +2225,12 @@
         31
       ],
       [
-        54,
-        23
-      ],
-      [
         48,
         37
       ],
       [
         25,
         54
-      ],
-      [
-        47,
-        23
       ],
       [
         45,
@@ -2327,10 +2243,6 @@
       [
         47,
         35
-      ],
-      [
-        51,
-        23
       ]
     ],
     "free_exploration_hexes": [],
@@ -2371,12 +2283,7 @@
       150,
       170,
       170,
-      150,
-      170,
-      170,
-      170,
-      1190,
-      250
+      150
     ],
     "_seg_steps": [
       0,
@@ -2407,11 +2314,6 @@
       1,
       1,
       1,
-      1,
-      1,
-      1,
-      1,
-      7,
       1
     ],
     "_seg_awards": [
@@ -2443,12 +2345,7 @@
       45,
       45,
       45,
-      40,
-      45,
-      45,
-      45,
-      315,
-      300
+      40
     ],
     "_seg_days": [
       3,
@@ -2474,11 +2371,6 @@
       4,
       4,
       4,
-      5,
-      5,
-      5,
-      5,
-      5,
       5,
       5,
       5,
@@ -2605,68 +2497,9 @@
           45,
           25
         ]
-      ],
-      [
-        [
-          46,
-          24
-        ]
-      ],
-      [
-        [
-          47,
-          24
-        ]
-      ],
-      [
-        [
-          47,
-          23
-        ]
-      ],
-      [
-        [
-          48,
-          23
-        ],
-        [
-          49,
-          23
-        ],
-        [
-          50,
-          23
-        ],
-        [
-          51,
-          23
-        ],
-        [
-          52,
-          23
-        ],
-        [
-          53,
-          23
-        ],
-        [
-          54,
-          23
-        ]
-      ],
-      [
-        [
-          55,
-          22
-        ]
       ]
     ],
     "_seg_exploration_hexes": [
-      [],
-      [],
-      [],
-      [],
-      [],
       [],
       [],
       [],
@@ -2769,11 +2602,6 @@
           38
         ]
       ],
-      [],
-      [],
-      [],
-      [],
-      [],
       [],
       [],
       [],
@@ -2962,60 +2790,6 @@
           45,
           25
         ]
-      ],
-      [
-        [
-          46,
-          24
-        ]
-      ],
-      [
-        [
-          47,
-          24
-        ]
-      ],
-      [
-        [
-          47,
-          23
-        ]
-      ],
-      [
-        [
-          48,
-          23
-        ],
-        [
-          49,
-          23
-        ],
-        [
-          50,
-          23
-        ],
-        [
-          51,
-          23
-        ],
-        [
-          52,
-          23
-        ],
-        [
-          53,
-          23
-        ],
-        [
-          54,
-          23
-        ]
-      ],
-      [
-        [
-          55,
-          22
-        ]
       ]
     ],
     "_seg_end_positions": [
@@ -3134,26 +2908,6 @@
       [
         45,
         25
-      ],
-      [
-        46,
-        24
-      ],
-      [
-        47,
-        24
-      ],
-      [
-        47,
-        23
-      ],
-      [
-        54,
-        23
-      ],
-      [
-        55,
-        22
       ]
     ],
     "_seg_action_sequence": [
@@ -3417,93 +3171,6 @@
             25
           ]
         ]
-      ],
-      [
-        [
-          "new",
-          [
-            46,
-            24
-          ]
-        ]
-      ],
-      [
-        [
-          "new",
-          [
-            47,
-            24
-          ]
-        ]
-      ],
-      [
-        [
-          "new",
-          [
-            47,
-            23
-          ]
-        ]
-      ],
-      [
-        [
-          "new",
-          [
-            48,
-            23
-          ]
-        ],
-        [
-          "new",
-          [
-            49,
-            23
-          ]
-        ],
-        [
-          "new",
-          [
-            50,
-            23
-          ]
-        ],
-        [
-          "new",
-          [
-            51,
-            23
-          ]
-        ],
-        [
-          "new",
-          [
-            52,
-            23
-          ]
-        ],
-        [
-          "new",
-          [
-            53,
-            23
-          ]
-        ],
-        [
-          "new",
-          [
-            54,
-            23
-          ]
-        ]
-      ],
-      [
-        [
-          "new",
-          [
-            55,
-            22
-          ]
-        ]
       ]
     ],
     "_seg_action_orders": [
@@ -3535,12 +3202,7 @@
       53,
       54,
       55,
-      56,
-      67,
-      68,
-      69,
-      70,
-      71
+      56
     ],
     "_seg_lengths": [
       1,
@@ -3571,11 +3233,6 @@
       1,
       1,
       1,
-      1,
-      1,
-      1,
-      1,
-      7,
       1
     ],
     "_seg_hex_costs": [
@@ -3781,79 +3438,9 @@
           40,
           1
         ]
-      ],
-      [
-        [
-          170,
-          45,
-          1
-        ]
-      ],
-      [
-        [
-          170,
-          45,
-          1
-        ]
-      ],
-      [
-        [
-          170,
-          45,
-          1
-        ]
-      ],
-      [
-        [
-          170,
-          45,
-          1
-        ],
-        [
-          170,
-          45,
-          1
-        ],
-        [
-          170,
-          45,
-          1
-        ],
-        [
-          170,
-          45,
-          1
-        ],
-        [
-          170,
-          45,
-          1
-        ],
-        [
-          170,
-          45,
-          1
-        ],
-        [
-          170,
-          45,
-          1
-        ]
-      ],
-      [
-        [
-          250,
-          300,
-          1
-        ]
       ]
     ],
     "_seg_is_fly_skill": [
-      false,
-      false,
-      false,
-      false,
-      false,
       false,
       false,
       false,
@@ -3913,11 +3500,6 @@
       0,
       0,
       0,
-      0,
-      0,
-      0,
-      0,
-      0,
       0
     ],
     "_no_draw_edges": [
@@ -3933,23 +3515,15 @@
       ]
     ]
   },
-  "active_team_num": 3,
+  "active_team_num": 2,
   "all_visited_hexes": [
-    [
-      46,
-      24
-    ],
-    [
-      51,
-      38
-    ],
     [
       46,
       30
     ],
     [
-      49,
-      23
+      51,
+      38
     ],
     [
       9,
@@ -3970,10 +3544,6 @@
     [
       48,
       39
-    ],
-    [
-      53,
-      23
     ],
     [
       49,
@@ -4036,20 +3606,12 @@
       26
     ],
     [
-      48,
-      23
-    ],
-    [
       19,
       51
     ],
     [
       11,
       44
-    ],
-    [
-      55,
-      22
     ],
     [
       49,
@@ -4074,18 +3636,6 @@
     [
       45,
       27
-    ],
-    [
-      47,
-      24
-    ],
-    [
-      50,
-      23
-    ],
-    [
-      52,
-      23
     ],
     [
       50,
@@ -4124,10 +3674,6 @@
       31
     ],
     [
-      54,
-      23
-    ],
-    [
       48,
       37
     ],
@@ -4138,10 +3684,6 @@
     [
       15,
       49
-    ],
-    [
-      47,
-      23
     ],
     [
       45,
@@ -4172,10 +3714,6 @@
       38
     ],
     [
-      51,
-      23
-    ],
-    [
       21,
       53
     ],
@@ -4188,12 +3726,7 @@
       41
     ]
   ],
-  "visited_g_lands": [
-    [
-      55,
-      22
-    ]
-  ],
+  "visited_g_lands": [],
   "day_records": [
     {
       "day": 1,
@@ -4233,36 +3766,36 @@
     },
     {
       "day": 5,
-      "food_used": 3250,
-      "reward_used": 1150,
-      "food_remain": 3980,
+      "food_used": 1300,
+      "reward_used": 400,
+      "food_remain": 5930,
       "team1_steps_remain": 18,
       "team2_steps_remain": 12,
-      "team3_steps_remain": 1
+      "team3_steps_remain": 12
     },
     {
       "day": 6,
       "food_used": 0,
       "reward_used": 0,
-      "food_remain": 5580,
+      "food_remain": 7530,
       "team1_steps_remain": 18,
       "team2_steps_remain": 18,
-      "team3_steps_remain": 7
+      "team3_steps_remain": 18
     },
     {
       "day": 7,
       "food_used": 0,
       "reward_used": 0,
-      "food_remain": 7180,
+      "food_remain": 9130,
       "team1_steps_remain": 18,
       "team2_steps_remain": 18,
-      "team3_steps_remain": 13
+      "team3_steps_remain": 18
     },
     {
       "day": 8,
       "food_used": 0,
       "reward_used": 0,
-      "food_remain": 8780,
+      "food_remain": 10730,
       "team1_steps_remain": 18,
       "team2_steps_remain": 18,
       "team3_steps_remain": 18
@@ -4271,7 +3804,7 @@
       "day": 9,
       "food_used": 0,
       "reward_used": 0,
-      "food_remain": 10380,
+      "food_remain": 12330,
       "team1_steps_remain": 18,
       "team2_steps_remain": 18,
       "team3_steps_remain": 18
@@ -4280,7 +3813,7 @@
       "day": 10,
       "food_used": 0,
       "reward_used": 0,
-      "food_remain": 11980,
+      "food_remain": 13930,
       "team1_steps_remain": 18,
       "team2_steps_remain": 18,
       "team3_steps_remain": 18
@@ -4289,7 +3822,7 @@
       "day": 11,
       "food_used": 0,
       "reward_used": 500,
-      "food_remain": 13580,
+      "food_remain": 15530,
       "team1_steps_remain": 18,
       "team2_steps_remain": 18,
       "team3_steps_remain": 18
@@ -4298,7 +3831,7 @@
       "day": 12,
       "food_used": 0,
       "reward_used": 0,
-      "food_remain": 15180,
+      "food_remain": 17130,
       "team1_steps_remain": 18,
       "team2_steps_remain": 18,
       "team3_steps_remain": 18
@@ -4307,7 +3840,7 @@
       "day": 13,
       "food_used": 0,
       "reward_used": 0,
-      "food_remain": 16780,
+      "food_remain": 18730,
       "team1_steps_remain": 18,
       "team2_steps_remain": 18,
       "team3_steps_remain": 18
@@ -4316,7 +3849,7 @@
       "day": 14,
       "food_used": 0,
       "reward_used": 0,
-      "food_remain": 18380,
+      "food_remain": 20330,
       "team1_steps_remain": 18,
       "team2_steps_remain": 18,
       "team3_steps_remain": 18
@@ -4325,7 +3858,7 @@
       "day": 15,
       "food_used": 0,
       "reward_used": 0,
-      "food_remain": 19980,
+      "food_remain": 21930,
       "team1_steps_remain": 18,
       "team2_steps_remain": 18,
       "team3_steps_remain": 18
@@ -4334,7 +3867,7 @@
       "day": 16,
       "food_used": 0,
       "reward_used": 0,
-      "food_remain": 21580,
+      "food_remain": 23530,
       "team1_steps_remain": 18,
       "team2_steps_remain": 18,
       "team3_steps_remain": 18
@@ -4343,7 +3876,7 @@
       "day": 17,
       "food_used": 0,
       "reward_used": 0,
-      "food_remain": 23180,
+      "food_remain": 25130,
       "team1_steps_remain": 18,
       "team2_steps_remain": 18,
       "team3_steps_remain": 18
@@ -4352,7 +3885,7 @@
       "day": 18,
       "food_used": 0,
       "reward_used": 500,
-      "food_remain": 24780,
+      "food_remain": 26730,
       "team1_steps_remain": 18,
       "team2_steps_remain": 18,
       "team3_steps_remain": 18
@@ -4361,7 +3894,7 @@
       "day": 19,
       "food_used": 0,
       "reward_used": 0,
-      "food_remain": 26380,
+      "food_remain": 28330,
       "team1_steps_remain": 18,
       "team2_steps_remain": 18,
       "team3_steps_remain": 18
@@ -4370,7 +3903,7 @@
       "day": 20,
       "food_used": 0,
       "reward_used": 0,
-      "food_remain": 27980,
+      "food_remain": 29930,
       "team1_steps_remain": 18,
       "team2_steps_remain": 18,
       "team3_steps_remain": 18
@@ -4379,7 +3912,7 @@
       "day": 21,
       "food_used": 0,
       "reward_used": 0,
-      "food_remain": 29580,
+      "food_remain": 31530,
       "team1_steps_remain": 18,
       "team2_steps_remain": 18,
       "team3_steps_remain": 18
@@ -4388,7 +3921,7 @@
       "day": 22,
       "food_used": 0,
       "reward_used": 0,
-      "food_remain": 31180,
+      "food_remain": 33130,
       "team1_steps_remain": 18,
       "team2_steps_remain": 18,
       "team3_steps_remain": 18
@@ -4397,7 +3930,7 @@
       "day": 23,
       "food_used": 0,
       "reward_used": 0,
-      "food_remain": 32780,
+      "food_remain": 34730,
       "team1_steps_remain": 18,
       "team2_steps_remain": 18,
       "team3_steps_remain": 18
@@ -4406,7 +3939,7 @@
       "day": 24,
       "food_used": 0,
       "reward_used": 0,
-      "food_remain": 34380,
+      "food_remain": 36330,
       "team1_steps_remain": 18,
       "team2_steps_remain": 18,
       "team3_steps_remain": 18
@@ -4415,7 +3948,7 @@
       "day": 25,
       "food_used": 0,
       "reward_used": 500,
-      "food_remain": 35980,
+      "food_remain": 37930,
       "team1_steps_remain": 18,
       "team2_steps_remain": 18,
       "team3_steps_remain": 18
@@ -4424,7 +3957,7 @@
       "day": 26,
       "food_used": 0,
       "reward_used": 0,
-      "food_remain": 37580,
+      "food_remain": 39530,
       "team1_steps_remain": 18,
       "team2_steps_remain": 18,
       "team3_steps_remain": 18
@@ -4433,7 +3966,7 @@
       "day": 27,
       "food_used": 0,
       "reward_used": 0,
-      "food_remain": 39180,
+      "food_remain": 41130,
       "team1_steps_remain": 18,
       "team2_steps_remain": 18,
       "team3_steps_remain": 18
@@ -4442,7 +3975,7 @@
       "day": 28,
       "food_used": 0,
       "reward_used": 0,
-      "food_remain": 40780,
+      "food_remain": 42730,
       "team1_steps_remain": 18,
       "team2_steps_remain": 18,
       "team3_steps_remain": 18
@@ -4451,7 +3984,7 @@
       "day": 29,
       "food_used": 0,
       "reward_used": 0,
-      "food_remain": 42380,
+      "food_remain": 44330,
       "team1_steps_remain": 18,
       "team2_steps_remain": 18,
       "team3_steps_remain": 18
@@ -4460,7 +3993,7 @@
       "day": 30,
       "food_used": 0,
       "reward_used": 0,
-      "food_remain": 43980,
+      "food_remain": 45930,
       "team1_steps_remain": 18,
       "team2_steps_remain": 18,
       "team3_steps_remain": 18
@@ -4469,7 +4002,7 @@
       "day": 31,
       "food_used": 0,
       "reward_used": 0,
-      "food_remain": 45580,
+      "food_remain": 47530,
       "team1_steps_remain": 18,
       "team2_steps_remain": 18,
       "team3_steps_remain": 18
@@ -4478,7 +4011,7 @@
       "day": 32,
       "food_used": 0,
       "reward_used": 500,
-      "food_remain": 47180,
+      "food_remain": 49130,
       "team1_steps_remain": 18,
       "team2_steps_remain": 18,
       "team3_steps_remain": 18
@@ -4487,7 +4020,7 @@
       "day": 33,
       "food_used": 0,
       "reward_used": 0,
-      "food_remain": 48780,
+      "food_remain": 50730,
       "team1_steps_remain": 18,
       "team2_steps_remain": 18,
       "team3_steps_remain": 18
@@ -4496,7 +4029,7 @@
       "day": 34,
       "food_used": 0,
       "reward_used": 0,
-      "food_remain": 50380,
+      "food_remain": 52330,
       "team1_steps_remain": 18,
       "team2_steps_remain": 18,
       "team3_steps_remain": 18
@@ -4505,7 +4038,7 @@
       "day": 35,
       "food_used": 0,
       "reward_used": 0,
-      "food_remain": 51980,
+      "food_remain": 53930,
       "team1_steps_remain": 18,
       "team2_steps_remain": 18,
       "team3_steps_remain": 18
@@ -4514,7 +4047,7 @@
       "day": 36,
       "food_used": 0,
       "reward_used": 0,
-      "food_remain": 53580,
+      "food_remain": 55530,
       "team1_steps_remain": 18,
       "team2_steps_remain": 18,
       "team3_steps_remain": 18
@@ -4523,7 +4056,7 @@
       "day": 37,
       "food_used": 0,
       "reward_used": 0,
-      "food_remain": 55180,
+      "food_remain": 57130,
       "team1_steps_remain": 18,
       "team2_steps_remain": 18,
       "team3_steps_remain": 18
@@ -4532,7 +4065,7 @@
       "day": 38,
       "food_used": 0,
       "reward_used": 0,
-      "food_remain": 56780,
+      "food_remain": 58730,
       "team1_steps_remain": 18,
       "team2_steps_remain": 18,
       "team3_steps_remain": 18
@@ -4541,7 +4074,7 @@
       "day": 39,
       "food_used": 0,
       "reward_used": 500,
-      "food_remain": 58380,
+      "food_remain": 60330,
       "team1_steps_remain": 18,
       "team2_steps_remain": 18,
       "team3_steps_remain": 18
@@ -4550,7 +4083,7 @@
       "day": 40,
       "food_used": 0,
       "reward_used": 0,
-      "food_remain": 59980,
+      "food_remain": 61930,
       "team1_steps_remain": 18,
       "team2_steps_remain": 18,
       "team3_steps_remain": 18
@@ -4559,7 +4092,7 @@
       "day": 41,
       "food_used": 0,
       "reward_used": 0,
-      "food_remain": 61580,
+      "food_remain": 63530,
       "team1_steps_remain": 18,
       "team2_steps_remain": 18,
       "team3_steps_remain": 18
@@ -4568,7 +4101,7 @@
       "day": 42,
       "food_used": 0,
       "reward_used": 0,
-      "food_remain": 63180,
+      "food_remain": 65130,
       "team1_steps_remain": 18,
       "team2_steps_remain": 18,
       "team3_steps_remain": 18
@@ -4577,7 +4110,7 @@
       "day": 43,
       "food_used": 0,
       "reward_used": 0,
-      "food_remain": 64780,
+      "food_remain": 66730,
       "team1_steps_remain": 18,
       "team2_steps_remain": 18,
       "team3_steps_remain": 18
@@ -4586,7 +4119,7 @@
       "day": 44,
       "food_used": 0,
       "reward_used": 0,
-      "food_remain": 66380,
+      "food_remain": 68330,
       "team1_steps_remain": 18,
       "team2_steps_remain": 18,
       "team3_steps_remain": 18
@@ -4595,7 +4128,7 @@
       "day": 45,
       "food_used": 0,
       "reward_used": 0,
-      "food_remain": 67980,
+      "food_remain": 69930,
       "team1_steps_remain": 18,
       "team2_steps_remain": 18,
       "team3_steps_remain": 18
@@ -4604,7 +4137,7 @@
       "day": 46,
       "food_used": 0,
       "reward_used": 500,
-      "food_remain": 69580,
+      "food_remain": 71530,
       "team1_steps_remain": 18,
       "team2_steps_remain": 18,
       "team3_steps_remain": 18
@@ -4613,7 +4146,7 @@
       "day": 47,
       "food_used": 0,
       "reward_used": 0,
-      "food_remain": 71180,
+      "food_remain": 73130,
       "team1_steps_remain": 18,
       "team2_steps_remain": 18,
       "team3_steps_remain": 18
@@ -4622,7 +4155,7 @@
       "day": 48,
       "food_used": 0,
       "reward_used": 0,
-      "food_remain": 72780,
+      "food_remain": 74730,
       "team1_steps_remain": 18,
       "team2_steps_remain": 18,
       "team3_steps_remain": 18
@@ -4631,7 +4164,7 @@
       "day": 49,
       "food_used": 0,
       "reward_used": 0,
-      "food_remain": 74380,
+      "food_remain": 76330,
       "team1_steps_remain": 18,
       "team2_steps_remain": 18,
       "team3_steps_remain": 18
@@ -4640,7 +4173,7 @@
       "day": 50,
       "food_used": 0,
       "reward_used": 0,
-      "food_remain": 75980,
+      "food_remain": 77930,
       "team1_steps_remain": 18,
       "team2_steps_remain": 18,
       "team3_steps_remain": 18
@@ -4649,7 +4182,7 @@
       "day": 51,
       "food_used": 0,
       "reward_used": 0,
-      "food_remain": 77580,
+      "food_remain": 79530,
       "team1_steps_remain": 18,
       "team2_steps_remain": 18,
       "team3_steps_remain": 18
@@ -4658,7 +4191,7 @@
       "day": 52,
       "food_used": 0,
       "reward_used": 0,
-      "food_remain": 79180,
+      "food_remain": 81130,
       "team1_steps_remain": 18,
       "team2_steps_remain": 18,
       "team3_steps_remain": 18
@@ -4667,7 +4200,7 @@
       "day": 53,
       "food_used": 0,
       "reward_used": 500,
-      "food_remain": 80780,
+      "food_remain": 82730,
       "team1_steps_remain": 18,
       "team2_steps_remain": 18,
       "team3_steps_remain": 18
@@ -4676,7 +4209,7 @@
       "day": 54,
       "food_used": 0,
       "reward_used": 0,
-      "food_remain": 82380,
+      "food_remain": 84330,
       "team1_steps_remain": 18,
       "team2_steps_remain": 18,
       "team3_steps_remain": 18
@@ -4685,7 +4218,7 @@
       "day": 55,
       "food_used": 0,
       "reward_used": 0,
-      "food_remain": 83980,
+      "food_remain": 85930,
       "team1_steps_remain": 18,
       "team2_steps_remain": 18,
       "team3_steps_remain": 18
@@ -4694,7 +4227,7 @@
       "day": 56,
       "food_used": 0,
       "reward_used": 0,
-      "food_remain": 85580,
+      "food_remain": 87530,
       "team1_steps_remain": 18,
       "team2_steps_remain": 18,
       "team3_steps_remain": 18
@@ -4703,7 +4236,7 @@
       "day": 57,
       "food_used": 0,
       "reward_used": 0,
-      "food_remain": 87180,
+      "food_remain": 89130,
       "team1_steps_remain": 18,
       "team2_steps_remain": 18,
       "team3_steps_remain": 18
@@ -4712,7 +4245,7 @@
       "day": 58,
       "food_used": 0,
       "reward_used": 0,
-      "food_remain": 88780,
+      "food_remain": 90730,
       "team1_steps_remain": 18,
       "team2_steps_remain": 18,
       "team3_steps_remain": 18
@@ -4721,7 +4254,7 @@
       "day": 59,
       "food_used": 0,
       "reward_used": 0,
-      "food_remain": 90380,
+      "food_remain": 92330,
       "team1_steps_remain": 18,
       "team2_steps_remain": 18,
       "team3_steps_remain": 18
@@ -4730,7 +4263,7 @@
       "day": 60,
       "food_used": 0,
       "reward_used": 500,
-      "food_remain": 91980,
+      "food_remain": 93930,
       "team1_steps_remain": 18,
       "team2_steps_remain": 18,
       "team3_steps_remain": 18
@@ -4739,7 +4272,7 @@
       "day": 61,
       "food_used": 0,
       "reward_used": 0,
-      "food_remain": 93580,
+      "food_remain": 95530,
       "team1_steps_remain": 18,
       "team2_steps_remain": 18,
       "team3_steps_remain": 18
@@ -4748,7 +4281,7 @@
       "day": 62,
       "food_used": 0,
       "reward_used": 0,
-      "food_remain": 95180,
+      "food_remain": 97130,
       "team1_steps_remain": 18,
       "team2_steps_remain": 18,
       "team3_steps_remain": 18
@@ -4757,7 +4290,7 @@
       "day": 63,
       "food_used": 0,
       "reward_used": 0,
-      "food_remain": 96780,
+      "food_remain": 98730,
       "team1_steps_remain": 18,
       "team2_steps_remain": 18,
       "team3_steps_remain": 18
@@ -4766,7 +4299,7 @@
       "day": 64,
       "food_used": 0,
       "reward_used": 0,
-      "food_remain": 98380,
+      "food_remain": 100330,
       "team1_steps_remain": 18,
       "team2_steps_remain": 18,
       "team3_steps_remain": 18
@@ -4775,7 +4308,7 @@
       "day": 65,
       "food_used": 0,
       "reward_used": 0,
-      "food_remain": 99980,
+      "food_remain": 101930,
       "team1_steps_remain": 18,
       "team2_steps_remain": 18,
       "team3_steps_remain": 18
@@ -4784,7 +4317,7 @@
       "day": 66,
       "food_used": 0,
       "reward_used": 0,
-      "food_remain": 101580,
+      "food_remain": 103530,
       "team1_steps_remain": 18,
       "team2_steps_remain": 18,
       "team3_steps_remain": 18
@@ -4793,7 +4326,7 @@
       "day": 67,
       "food_used": 0,
       "reward_used": 500,
-      "food_remain": 103180,
+      "food_remain": 105130,
       "team1_steps_remain": 18,
       "team2_steps_remain": 18,
       "team3_steps_remain": 18
@@ -4802,7 +4335,7 @@
       "day": 68,
       "food_used": 0,
       "reward_used": 0,
-      "food_remain": 104780,
+      "food_remain": 106730,
       "team1_steps_remain": 18,
       "team2_steps_remain": 18,
       "team3_steps_remain": 18
@@ -4811,7 +4344,7 @@
       "day": 69,
       "food_used": 0,
       "reward_used": 0,
-      "food_remain": 106380,
+      "food_remain": 108330,
       "team1_steps_remain": 18,
       "team2_steps_remain": 18,
       "team3_steps_remain": 18
@@ -4820,7 +4353,7 @@
       "day": 70,
       "food_used": 0,
       "reward_used": 0,
-      "food_remain": 107980,
+      "food_remain": 109930,
       "team1_steps_remain": 18,
       "team2_steps_remain": 18,
       "team3_steps_remain": 18
@@ -4829,7 +4362,7 @@
       "day": 71,
       "food_used": 0,
       "reward_used": 0,
-      "food_remain": 109580,
+      "food_remain": 111530,
       "team1_steps_remain": 18,
       "team2_steps_remain": 18,
       "team3_steps_remain": 18
@@ -4838,7 +4371,7 @@
       "day": 72,
       "food_used": 0,
       "reward_used": 0,
-      "food_remain": 111180,
+      "food_remain": 113130,
       "team1_steps_remain": 18,
       "team2_steps_remain": 18,
       "team3_steps_remain": 18
@@ -4847,7 +4380,7 @@
       "day": 73,
       "food_used": 0,
       "reward_used": 0,
-      "food_remain": 112780,
+      "food_remain": 114730,
       "team1_steps_remain": 18,
       "team2_steps_remain": 18,
       "team3_steps_remain": 18
@@ -4856,7 +4389,7 @@
       "day": 74,
       "food_used": 0,
       "reward_used": 500,
-      "food_remain": 114380,
+      "food_remain": 116330,
       "team1_steps_remain": 18,
       "team2_steps_remain": 18,
       "team3_steps_remain": 18
@@ -4865,7 +4398,7 @@
       "day": 75,
       "food_used": 0,
       "reward_used": 0,
-      "food_remain": 115980,
+      "food_remain": 117930,
       "team1_steps_remain": 18,
       "team2_steps_remain": 18,
       "team3_steps_remain": 18
@@ -4874,7 +4407,7 @@
       "day": 76,
       "food_used": 0,
       "reward_used": 0,
-      "food_remain": 117580,
+      "food_remain": 119530,
       "team1_steps_remain": 18,
       "team2_steps_remain": 18,
       "team3_steps_remain": 18
@@ -4883,7 +4416,7 @@
       "day": 77,
       "food_used": 0,
       "reward_used": 0,
-      "food_remain": 119180,
+      "food_remain": 121130,
       "team1_steps_remain": 18,
       "team2_steps_remain": 18,
       "team3_steps_remain": 18
@@ -4892,7 +4425,7 @@
       "day": 78,
       "food_used": 0,
       "reward_used": 0,
-      "food_remain": 120780,
+      "food_remain": 122730,
       "team1_steps_remain": 18,
       "team2_steps_remain": 18,
       "team3_steps_remain": 18
@@ -4901,7 +4434,7 @@
       "day": 79,
       "food_used": 0,
       "reward_used": 0,
-      "food_remain": 122380,
+      "food_remain": 124330,
       "team1_steps_remain": 18,
       "team2_steps_remain": 18,
       "team3_steps_remain": 18
@@ -4910,7 +4443,7 @@
       "day": 80,
       "food_used": 0,
       "reward_used": 0,
-      "food_remain": 123980,
+      "food_remain": 125930,
       "team1_steps_remain": 18,
       "team2_steps_remain": 18,
       "team3_steps_remain": 18
@@ -4919,7 +4452,7 @@
       "day": 81,
       "food_used": 0,
       "reward_used": 500,
-      "food_remain": 125580,
+      "food_remain": 127530,
       "team1_steps_remain": 18,
       "team2_steps_remain": 18,
       "team3_steps_remain": 18
@@ -4928,7 +4461,7 @@
       "day": 82,
       "food_used": 0,
       "reward_used": 0,
-      "food_remain": 127180,
+      "food_remain": 129130,
       "team1_steps_remain": 18,
       "team2_steps_remain": 18,
       "team3_steps_remain": 18
@@ -4937,7 +4470,7 @@
       "day": 83,
       "food_used": 0,
       "reward_used": 0,
-      "food_remain": 128780,
+      "food_remain": 130730,
       "team1_steps_remain": 18,
       "team2_steps_remain": 18,
       "team3_steps_remain": 18
@@ -4946,7 +4479,7 @@
       "day": 84,
       "food_used": 0,
       "reward_used": 0,
-      "food_remain": 130380,
+      "food_remain": 132330,
       "team1_steps_remain": 18,
       "team2_steps_remain": 18,
       "team3_steps_remain": 18
@@ -4955,7 +4488,7 @@
       "day": 85,
       "food_used": 0,
       "reward_used": 0,
-      "food_remain": 131980,
+      "food_remain": 133930,
       "team1_steps_remain": 18,
       "team2_steps_remain": 18,
       "team3_steps_remain": 18
@@ -4964,7 +4497,7 @@
       "day": 86,
       "food_used": 0,
       "reward_used": 0,
-      "food_remain": 133580,
+      "food_remain": 135530,
       "team1_steps_remain": 18,
       "team2_steps_remain": 18,
       "team3_steps_remain": 18
@@ -4973,7 +4506,7 @@
       "day": 87,
       "food_used": 0,
       "reward_used": 0,
-      "food_remain": 135180,
+      "food_remain": 137130,
       "team1_steps_remain": 18,
       "team2_steps_remain": 18,
       "team3_steps_remain": 18
@@ -4982,7 +4515,7 @@
       "day": 88,
       "food_used": 0,
       "reward_used": 500,
-      "food_remain": 136780,
+      "food_remain": 138730,
       "team1_steps_remain": 18,
       "team2_steps_remain": 18,
       "team3_steps_remain": 18
@@ -4991,7 +4524,7 @@
       "day": 89,
       "food_used": 0,
       "reward_used": 0,
-      "food_remain": 138380,
+      "food_remain": 140330,
       "team1_steps_remain": 18,
       "team2_steps_remain": 18,
       "team3_steps_remain": 18
@@ -5000,7 +4533,7 @@
       "day": 90,
       "food_used": 0,
       "reward_used": 0,
-      "food_remain": 139980,
+      "food_remain": 141930,
       "team1_steps_remain": 18,
       "team2_steps_remain": 18,
       "team3_steps_remain": 18
@@ -5009,7 +4542,7 @@
       "day": 91,
       "food_used": 0,
       "reward_used": 0,
-      "food_remain": 141580,
+      "food_remain": 143530,
       "team1_steps_remain": 18,
       "team2_steps_remain": 18,
       "team3_steps_remain": 18
@@ -5018,7 +4551,7 @@
       "day": 92,
       "food_used": 0,
       "reward_used": 0,
-      "food_remain": 143180,
+      "food_remain": 145130,
       "team1_steps_remain": 18,
       "team2_steps_remain": 18,
       "team3_steps_remain": 18
@@ -5027,7 +4560,7 @@
       "day": 93,
       "food_used": 0,
       "reward_used": 0,
-      "food_remain": 144780,
+      "food_remain": 146730,
       "team1_steps_remain": 18,
       "team2_steps_remain": 18,
       "team3_steps_remain": 18
@@ -5036,7 +4569,7 @@
       "day": 94,
       "food_used": 0,
       "reward_used": 0,
-      "food_remain": 146380,
+      "food_remain": 148330,
       "team1_steps_remain": 18,
       "team2_steps_remain": 18,
       "team3_steps_remain": 18
@@ -5045,7 +4578,7 @@
       "day": 95,
       "food_used": 0,
       "reward_used": 500,
-      "food_remain": 147980,
+      "food_remain": 149930,
       "team1_steps_remain": 18,
       "team2_steps_remain": 18,
       "team3_steps_remain": 18
@@ -5054,7 +4587,7 @@
       "day": 96,
       "food_used": 0,
       "reward_used": 0,
-      "food_remain": 149580,
+      "food_remain": 151530,
       "team1_steps_remain": 18,
       "team2_steps_remain": 18,
       "team3_steps_remain": 18
@@ -5063,7 +4596,7 @@
       "day": 97,
       "food_used": 0,
       "reward_used": 0,
-      "food_remain": 151180,
+      "food_remain": 153130,
       "team1_steps_remain": 18,
       "team2_steps_remain": 18,
       "team3_steps_remain": 18

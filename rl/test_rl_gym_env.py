@@ -1,7 +1,10 @@
 """Optional Gymnasium adapter checks."""
 
 import importlib.util
+import sys
+from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from rl_gym_env import NarutoMarchingGymEnv
 from rl_playground import ActionType
 import hex_pathfinding_demo as game

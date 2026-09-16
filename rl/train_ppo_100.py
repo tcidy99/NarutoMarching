@@ -2,6 +2,7 @@
 
 import csv
 import json
+import sys
 import time
 from pathlib import Path
 
@@ -10,14 +11,15 @@ from stable_baselines3 import PPO
 from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.vec_env import DummyVecEnv
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from rl_gym_env import NarutoMarchingGymEnv
 
 
 EPISODE_COUNT = 100
 MAX_STEPS_PER_EPISODE = 1000
 TOTAL_TIMESTEPS = EPISODE_COUNT * MAX_STEPS_PER_EPISODE
-OUTPUT_JSON = Path("ppo_100_episode_results_occupied.json")
-OUTPUT_CSV = Path("ppo_100_episode_results_occupied.csv")
+OUTPUT_JSON = Path(__file__).resolve().parent / "ppo_100_episode_results_occupied.json"
+OUTPUT_CSV = Path(__file__).resolve().parent / "ppo_100_episode_results_occupied.csv"
 
 
 class EpisodeLimit(gym.Wrapper):

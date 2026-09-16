@@ -4,8 +4,8 @@ import glob
 import json
 from pathlib import Path
 
-
-ARCHIVE_PATH = next(Path(path) for path in glob.glob("*余46.json"))
+REPO_ROOT = Path(__file__).resolve().parent.parent
+ARCHIVE_PATH = next(Path(path) for path in glob.glob(str(REPO_ROOT / "*余46.json")))
 
 
 def test_archive_segment_ledgers_are_consistent():

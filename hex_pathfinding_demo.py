@@ -728,7 +728,7 @@ class PathfindingDemo:
         self._team_action_ax.axis('off')
         self._action_symbol_hits = []
         self._action_tooltip = self.fig.text(
-            0.0, 0.0, '', ha='left', va='bottom', fontsize=9,
+            0.0, 0.0, '', ha='right', va='bottom', fontsize=9,
             color='#222222', visible=False,
             bbox=dict(boxstyle='round,pad=0.35', facecolor='#fffde6', edgecolor='#777777'),
             zorder=20,
@@ -889,9 +889,14 @@ class PathfindingDemo:
             if hit is None:
                 self._action_tooltip.set_visible(False)
             else:
+                # The symbol column sits at the figure's right edge (x~0.91-1.0),
+                # so the tooltip grows leftward from the cursor (ha='right')
+                # instead of rightward - growing rightward needed a large clamp
+                # to avoid running off the figure, which was the actual cause
+                # of the tooltip appearing far from the cursor.
                 fig_x, fig_y = self.fig.transFigure.inverted().transform((event.x, event.y))
-                self._action_tooltip.set_position((min(max(fig_x + 0.008, 0.0), 0.82),
-                                                   min(max(fig_y + 0.008, 0.0), 0.94)))
+                self._action_tooltip.set_position((min(max(fig_x - 0.003, 0.05), 0.99),
+                                                   min(max(fig_y + 0.003, 0.0), 0.94)))
                 self._action_tooltip.set_text(
                     f"粮草: {hit['food']}\n积分: {hit['award']}"
                 )
@@ -4845,8 +4850,16 @@ class PathfindingDemo:
                 continue
             day_events.setdefault(ev['day'], []).append(ev)
 
+        # For the day the very last G/g land is captured: everything recorded
+        # after that moment (any team) shares one column axis starting right
+        # after the G/g land's own column, instead of each team packing from
+        # its own column 1 - see _export_day_sheets_xlsx's row-17 handling for
+        # the matching per-column 八卦齐 split on that same day.
+        decisive_col_by_day = {}
+
         for day in sorted(day_events.keys()):
             pending = list(day_events[day])
+            shared_after_g_col = None
 
             while pending:
                 chosen_idx = 0
@@ -4882,12 +4895,27 @@ class PathfindingDemo:
                         final_g_entry = entries.pop(final_g_idx)
                         entries.insert(0, final_g_entry)
 
+                # Once this day's decisive G/g has been captured, pad this
+                # team's row up to the shared column before appending, so its
+                # next entry lines up with whatever column other teams'
+                # post-G/g entries are also starting from. Consecutive jump
+                # labels get merged into one "跳N" cell in a later pass, so
+                # the column a team's entries-so-far actually end up in is
+                # the *merged* count, not the raw per-hex entry count.
+                if shared_after_g_col is not None:
+                    merged_len_so_far = len(_merge_consecutive_jump_labels(operations_by_day_team[key]))
+                    if merged_len_so_far < shared_after_g_col:
+                        operations_by_day_team[key].extend([None] * (shared_after_g_col - merged_len_so_far))
+
                 operations_by_day_team[key].extend(e.get('label', '') for e in entries)
 
+                g_completed_now = False
                 for e in entries:
                     g_pos = e.get('g_pos')
                     if g_pos in unvisited_g:
                         unvisited_g.remove(g_pos)
+                        if not unvisited_g:
+                            g_completed_now = True
 
                 portal_source = ev['portal_source']
                 portal_dest = ev['portal_dest']
@@ -4913,10 +4941,14 @@ class PathfindingDemo:
                     if portal_dest is not None:
                         taken_portals.add(portal_dest)
 
+                if g_completed_now and shared_after_g_col is None:
+                    shared_after_g_col = len(_merge_consecutive_jump_labels(operations_by_day_team[key]))
+                    decisive_col_by_day[day] = shared_after_g_col
+
         for key, ops in operations_by_day_team.items():
             operations_by_day_team[key] = _merge_consecutive_jump_labels(ops)
 
-        return operations_by_day_team
+        return operations_by_day_team, decisive_col_by_day
 
     def _export_day_sheets_xlsx(self):
         """Export operations into day sheets (1..TOTAL_DAYS) of an Excel template workbook."""
@@ -4992,7 +5024,7 @@ class PathfindingDemo:
 
             wb = load_workbook(template_path)
 
-            operations_by_day_team = self._build_excel_operations_by_day_team()
+            operations_by_day_team, decisive_col_by_day = self._build_excel_operations_by_day_team()
             day_food_adj, day_reward_adj, _day_team_step_bonus = self._compute_bxz_adjustments()
 
             # Rebuild day records so we can write final end-action values from canonical state.
@@ -5039,9 +5071,20 @@ class PathfindingDemo:
 
                 # 八卦齐 (row 17): once all G/g lands have been captured, every
                 # slot from the following day onward gets the global discount.
+                # On the completion day itself, only the slots after the
+                # decisive G/g land's own column (shared across all teams)
+                # get it - the G/g land's own slot and everything before it
+                # still reflect the pre-completion state.
                 if all_g_complete_day is not None and day > all_g_complete_day:
                     for col in range(op_start_col, op_end_col + 1):
                         ws.cell(row=17, column=col, value='是')
+                elif day == all_g_complete_day:
+                    shared_col = decisive_col_by_day.get(day)
+                    if shared_col is not None:
+                        for col in range(op_start_col, op_end_col + 1):
+                            slot_idx = col - op_start_col
+                            if slot_idx >= shared_col:
+                                ws.cell(row=17, column=col, value='是')
 
             wb.save(output_path)
 

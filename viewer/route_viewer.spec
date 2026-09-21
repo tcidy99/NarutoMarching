@@ -21,7 +21,11 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=[],
+    # route_viewer imports hex_core only. Naming the editor module here is a
+    # hard guarantee: if some future import ever reaches for it, the build
+    # fails loudly instead of silently shipping the editor's bytecode inside
+    # the read-only viewer.
+    excludes=['hex_pathfinding_demo'],
     noarchive=False,
     optimize=0,
 )
@@ -46,4 +50,7 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
+    # icon.ico 由仓库根目录的 icon.jpg 生成(白底补边成正方, 内含 16~256 六种
+    # 尺寸)。Windows 只认 .ico, 直接给 .jpg 会打包失败。
+    icon=os.path.join(REPO_ROOT, 'icon.ico'),
 )

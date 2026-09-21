@@ -1,6 +1,6 @@
 {
-  "current_day": 83,
-  "current_food": 6,
+  "current_day": 10,
+  "current_food": 590,
   "total_food": 160394,
   "total_reward": 70558,
   "fly_skill_limit": 0,
@@ -51146,7 +51146,7 @@
       ]
     ]
   },
-  "active_team_num": 1,
+  "active_team_num": 2,
   "all_visited_hexes": [
     [
       15,

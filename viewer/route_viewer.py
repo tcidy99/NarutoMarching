@@ -1,15 +1,20 @@
 """Read-only route viewer for Naruto Marching S25 saves.
 
-This reuses the GUI game engine in hex_pathfinding_demo.py unchanged and only
-disables the route-drawing/editing interactions, keeping map viewing, day
-navigation, team-view switching, stats, and screenshot.
+This reuses the GUI engine in hex_core.py unchanged and only disables the
+remaining interactions, keeping map viewing, day navigation, team-view
+switching, stats, and screenshot.
+
+It imports hex_core, NOT hex_pathfinding_demo. The editor half - route
+drawing and pricing, undo, day-range edits, enclosure mode, saving, the Excel
+export - lives in hex_pathfinding_demo.py and is deliberately never imported
+here, so none of it is bundled into the viewer executable.
 """
 
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-import hex_pathfinding_demo as game
+import hex_core as game
 import matplotlib.pyplot as plt
 from matplotlib.collections import LineCollection
 
@@ -30,6 +35,18 @@ _ROUTE_EDITING_BUTTONS = (
     '_btn_export_xlsx',
     '_btn_save',
     '_btn_map_view',
+    '_btn_import_map',
+)
+
+# Display-toggle buttons the viewer doesn't offer: future-route preview and
+# the B/X/Z buff labels are always off (see __init__), and per-save global
+# stats aren't a viewer feature. Hidden the same way as the editing buttons
+# above, for the same reason (the base class's redraw helpers still touch
+# these button objects unconditionally).
+_DISPLAY_TOGGLE_BUTTONS = (
+    '_btn_show_future',
+    '_btn_chk_labels',
+    '_btn_global_stat',
 )
 
 
@@ -44,8 +61,8 @@ def _darken_rgb(rgb, amount=0.4):
     return tuple(c * (1 - amount) for c in rgb)
 
 
-class RouteViewerApp(game.PathfindingDemo):
-    """Read-only variant of PathfindingDemo: view saves, no editing."""
+class RouteViewerApp(game.HexCore):
+    """Read-only variant of the engine: view saves, no editing."""
 
     def __init__(self):
         # Viewer-only background color; _draw() and figure/axes setup in the
@@ -53,7 +70,7 @@ class RouteViewerApp(game.PathfindingDemo):
         # before construction recolors everything derived from it.
         game.APP_BACKGROUND_COLOR = '#344239'
 
-        # PathfindingDemo.__init__ ends by calling plt.show(), which blocks
+        # HexCore.__init__ ends by calling plt.show(), which blocks
         # until the window closes - hiding buttons after super().__init__()
         # would never run. Suppress that call, finish our own setup, then
         # show the window ourselves.
@@ -65,6 +82,19 @@ class RouteViewerApp(game.PathfindingDemo):
             plt.show = real_show
 
         self._hide_route_editing_buttons()
+
+        # 读取 shared its bottom-right slot with 保存 (each half-width); now
+        # that 保存 is hidden (in _ROUTE_EDITING_BUTTONS), 读取 can take the
+        # whole slot at the same width as the other bottom-row buttons.
+        self._btn_load.ax.set_position([0.916, 0.002, 0.084, 0.025])
+
+        # Viewer defaults: no future-route preview, no B/X/Z buff labels -
+        # both buttons that would toggle these are hidden above, so these
+        # flags are the only way to set the default and they can never be
+        # changed back on from the UI.
+        self._show_future_paths = False
+        self._show_bonus_labels = False
+
         self.fig.canvas.manager.set_window_title('远征路线查看器 S25 (只读)')
         self._status_msg = '路线查看器：点击"读取"加载存档。'
         self._show_image_map_on_startup()
@@ -76,41 +106,21 @@ class RouteViewerApp(game.PathfindingDemo):
         if self._load_map_image():
             self._map_view_mode = 'image'
 
-    def _team_position_for_day(self, team, day):
-        """Return the hex to center on when switching to `team` while viewing `day`.
-
-        If the team acted on `day`, this is the position of their first step
-        that day. Otherwise it's their position as of their most recent action
-        at or before `day` (not their absolute final position in the save).
-        """
-        infos = self._get_team_segment_infos(team)
-        day_segs = [s for s in infos if s['day'] == day]
-        if day_segs:
-            nodes = day_segs[0].get('path_nodes') or []
-            return tuple(nodes[0]) if nodes else tuple(day_segs[0]['end_pos'])
-
-        prior_segs = [s for s in infos if s['day'] <= day]
-        if prior_segs:
-            return tuple(prior_segs[-1]['end_pos'])
-        return tuple(team.origin)
-
+    # Browsing a save is not the same as playing one: whatever the viewer has
+    # panned and zoomed to is the thing they want to keep looking at while they
+    # step through days or flip between teams. Both of the base class's
+    # recentering entry points are disabled so switching team (1/2/3, the team
+    # buttons) and switching day (Q/E, the day picker, prev/next) leave
+    # the view exactly where it is. Loading a save still refits the whole map,
+    # since _load_game clears _has_zoomed.
     def _center_view_on_active_team(self):
-        """Center on the active team's day-relevant position, not its final one.
+        """No-op: switching team must not move the view."""
 
-        Overrides the base behavior (which always centers on
-        team.full_path[-1], i.e. the team's absolute end-of-game position)
-        since a viewer browsing a specific day should focus on where that team
-        was that day, not where they ended up much later in the archive.
-        """
-        team = self.active_team
-        if team is None:
-            return
-        target = self._team_position_for_day(team, self.current_day)
-        cx, cy = game._center(*target)
-        self._center_view_on_scaled_point(cx * game.X_SCALE, cy * game.Y_SCALE)
+    def _center_view_on_active_team_day(self, day, move_if_empty=True):
+        """No-op: switching day must not move the view."""
 
     def _hide_route_editing_buttons(self):
-        for name in _ROUTE_EDITING_BUTTONS:
+        for name in _ROUTE_EDITING_BUTTONS + _DISPLAY_TOGGLE_BUTTONS:
             btn = getattr(self, name, None)
             if btn is None:
                 continue

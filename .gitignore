@@ -1,0 +1,17 @@
+# Python 编译产物
+__pycache__/
+*.pyc
+
+# 编辑器/工具配置
+.claude/
+
+# 本地临时备份(导出表、存档修复前的快照等)
+*.local-backup
+
+# 整包快照压缩包: 每个约 45MB, 内容与源码重复, 不进仓库
+远征画图S25*.zip
+viewer/viewerS25*.zip
+
+# 另一个模拟器(远征模拟器)的完整 Godot 工程源码: 属于他人作品, 仅本地参考。
+# 我们真正需要的是 mapImport/*.json 那几张地图, 它们不受此规则影响。
+mapImport/远征模拟器/

@@ -120,6 +120,21 @@ APP_BACKGROUND_COLOR = '#4C4A55'
 GLOBAL_STAT_FIGSIZE = (14, 10)
 _GLOBAL_STAT_BASE_FIGSIZE = (8, 10)
 
+# 右键拖动时两次重绘之间的最小间隔(毫秒)。Tk 送来的 motion_notify 事件可以到
+# 100-200Hz, 而一次完整重绘要 90ms 上下, 于是事件排成长队、松手后画面还在追 ——
+# 这就是拖动"发粘"的直接原因。合并到 ~60Hz: 中间的事件只更新坐标轴范围, 由定时器
+# 统一渲染最新位置, 丢掉的都是本来也看不见的中间帧。
+PAN_FRAME_INTERVAL_MS = 16
+
+# 拖动停手多久之后补一次完整重绘(毫秒)。位图缓存平移会在拖出去的那一侧留下一条
+# 空白带(画布外面没有像素可搬), 手一停就把它补齐, 短到用户察觉不到停顿。
+PAN_SETTLE_MS = 110
+
+# 位图缓存允许的最大平移距离, 按坐标区宽/高的比例计。超过这个距离空白带就宽得碍眼
+# 了, 此时重做一次完整绘制并以新位置重建缓存 —— 长距离拖动因此变成"每拖过屏幕的
+# 三分之一卡一帧", 而不是全程每帧都卡。
+PAN_CACHE_MAX_SHIFT = 0.35
+
 # Readable name for each map token, used for the 全局统计 land table's first
 # column. A token with no entry here falls back to the raw token.
 LAND_DISPLAY_NAMES = {
@@ -280,6 +295,96 @@ class _RouteLineBatch:
                     joinstyle=run['style'][1],
                 ))
         self.layers.clear()
+
+
+class _PanBlitCache:
+    """右键拖动期间的地图位图缓存。
+
+    拖动只改变坐标轴范围: 画出来的东西一模一样, 整体平移而已。但 matplotlib 还是要
+    把三千多个六边形(或 2600x2067 的实景图)、几十段路线和几十个文字全部重新光栅化,
+    实测六边形图 72ms、实景图 85ms 一帧。鼠标回报率 125Hz, 于是事件排队、画面追不上
+    手 —— 这就是拖动卡顿的全部来源。
+
+    这里的做法: 完整绘制一帧之后把坐标区那块像素留下来, 之后每帧只把它整数像素平移
+    再 blit, 实测 0.2ms。
+
+    两个已知的画面差异, 都在松手(或停手 PAN_SETTLE_MS)后的完整重绘里自动消失:
+      · 拖出去的那一侧会露出一条空白带 —— 画布外面本来就没有像素可搬。平移超过
+        PAN_CACHE_MAX_SHIFT 时会重做完整绘制并以新位置重建缓存, 空白带宽度因此有上限。
+      · 水印是按坐标区比例(transAxes)贴的, 本该固定不动, 但它在缓存里, 拖动期间会
+        跟着地图一起走。半透明大字挪几十像素肉眼基本看不出来。
+    """
+
+    __slots__ = ('pixels', 'fill', 'rows', 'cols', 'origin_px',
+                 'canvas_shape', 'ax_extents')
+
+    def __init__(self, canvas, ax, origin_px):
+        buf = np.asarray(canvas.get_renderer().buffer_rgba())
+        height = buf.shape[0]
+        x0, y0, x1, y1 = (int(round(v)) for v in ax.bbox.extents)
+        # buffer_rgba() 的第 0 行是画布顶部, 而 bbox 的 y 从底部算起, 所以要翻过来。
+        self.cols = (max(0, min(x0, x1)), max(0, max(x0, x1)))
+        self.rows = (max(0, height - max(y0, y1)), max(0, height - min(y0, y1)))
+        self.pixels = buf[self.rows[0]:self.rows[1], self.cols[0]:self.cols[1]].copy()
+        self.fill = (np.asarray(to_rgba(ax.get_facecolor())) * 255).astype(np.uint8)
+        self.origin_px = origin_px
+        self.canvas_shape = buf.shape
+        self.ax_extents = tuple(ax.bbox.extents)
+
+    @property
+    def ok(self):
+        return self.pixels.size > 0
+
+    def matches(self, canvas, ax):
+        """缓存是否还配得上当前画布 —— 窗口缩放过就配不上了。"""
+        try:
+            buf = np.asarray(canvas.get_renderer().buffer_rgba())
+        except Exception:
+            return False
+        return (buf.shape == self.canvas_shape and
+                tuple(ax.bbox.extents) == self.ax_extents)
+
+    def shift_fits(self, dx, dy):
+        """平移量是否还在可接受范围内(空白带没宽到碍眼)。"""
+        h, w = self.pixels.shape[:2]
+        return (abs(dx) <= w * PAN_CACHE_MAX_SHIFT and
+                abs(dy) <= h * PAN_CACHE_MAX_SHIFT)
+
+    def blit(self, canvas, ax, dx, dy):
+        """把缓存平移 (dx, dy) 屏幕像素后写进渲染缓冲区并 blit。返回是否成功。
+
+        dx/dy 是鼠标的屏幕位移(matplotlib 事件坐标, +y 朝上); 地图跟着手走, 所以缓存
+        往同方向搬。数组里行号朝下增长, 于是 +dy 对应 -row。
+        """
+        src = self.pixels
+        h, w = src.shape[:2]
+        # 目标窗口里能被缓存覆盖到的部分: dest[i, j] = src[i + dy, j - dx]
+        r0, r1 = max(0, -dy), min(h, h - dy)
+        c0, c1 = max(0, dx), min(w, w + dx)
+        if r1 <= r0 or c1 <= c0:
+            return False
+
+        buf = np.asarray(canvas.get_renderer().buffer_rgba())
+        if buf.shape != self.canvas_shape:
+            return False
+        out = buf[self.rows[0]:self.rows[1], self.cols[0]:self.cols[1]]
+        if out.shape[:2] != (h, w):
+            return False
+
+        # 只把露出来的边条刷成底色, 中间那块直接被下面的拷贝覆盖 —— 整块填充要多搬
+        # 一遍几百万像素, 没必要。
+        if r0 > 0:
+            out[:r0] = self.fill
+        if r1 < h:
+            out[r1:] = self.fill
+        if c0 > 0:
+            out[r0:r1, :c0] = self.fill
+        if c1 < w:
+            out[r0:r1, c1:] = self.fill
+        out[r0:r1, c0:c1] = src[r0 + dy:r1 + dy, c0 - dx:c1 - dx]
+
+        canvas.blit(ax.bbox)
+        return True
 
 
 # Unit hexagon vertex offsets - flat-top orientation (vertices at 0/60/120/.../300
@@ -667,6 +772,14 @@ class HexCore:
         self._pan_start_xlim = None  # Map x-axis limits at pan start
         self._pan_start_ylim = None  # Map y-axis limits at pan start
         self._pan_transform = None  # Data<->pixel transform frozen at pan start
+        # 拖动时的重绘合并定时器。鼠标移动事件的频率(100-200Hz)远高于屏幕刷新,
+        # 每个事件都重绘纯属浪费 —— 改为最多每 PAN_FRAME_INTERVAL_MS 渲染一帧,
+        # 期间只记录最新位置。见 _on_motion / _render_pan_frame。
+        self._pan_frame_timer = None
+        # 停手后补一次完整重绘的定时器, 用来填掉位图缓存平移露出的空白带。
+        self._pan_settle_timer = None
+        self._pan_cache = None  # _PanBlitCache, 只在一次拖动期间存活
+        self._pan_last_px = None  # 最近一个鼠标事件的屏幕像素位置
 
         self._show_bonus_labels = True  # Toggle for showing B/X/Z bonus hex labels
         
@@ -926,6 +1039,22 @@ class HexCore:
         """Close dependent stat windows when the main map window closes."""
         self._data_window_open = False
         self._global_stat_window_open = False
+        # 任何在画布销毁后才触发的回调都会往死窗口上画, 趁还能停的时候全停掉:
+        # 拖动的两个定时器、缩放后的延迟重绘、悬停预览。
+        self._cancel_pan_frame()
+        self._pan_cache = None
+        if self._zoom_refresh_timer is not None:
+            try:
+                self._zoom_refresh_timer.stop()
+            except Exception:
+                pass
+            self._zoom_refresh_timer = None
+        if self._hover_timer is not None:
+            try:
+                self._hover_timer.cancel()
+            except Exception:
+                pass
+            self._hover_timer = None
 
         try:
             if (hasattr(self, 'global_stat_fig') and self.global_stat_fig is not None and
@@ -1033,6 +1162,123 @@ class HexCore:
             self.fig.canvas.draw_idle()
         self._hover_hex = None
 
+    def _update_pan_limits(self, event):
+        """Shift the axes to follow the cursor. Cheap: no rendering happens here."""
+        # Convert the raw pixel position through the transform frozen at
+        # drag-start (not self.ax.transData, which shifts every frame as we
+        # pan) so the delta is measured in one consistent reference frame.
+        cur_x, cur_y = self._pan_transform.transform((event.x, event.y))
+        dx = cur_x - self._pan_start_x
+        dy = cur_y - self._pan_start_y
+
+        # Pan the map by adjusting axis limits (pan in opposite direction of mouse movement)
+        self.ax.set_xlim((self._pan_start_xlim[0] - dx, self._pan_start_xlim[1] - dx))
+        self.ax.set_ylim((self._pan_start_ylim[0] - dy, self._pan_start_ylim[1] - dy))
+
+    def _schedule_pan_frame(self):
+        """Ask for one redraw at most every PAN_FRAME_INTERVAL_MS while dragging.
+
+        A pending timer is left alone rather than restarted: restarting it would
+        starve the redraw for as long as the mouse keeps moving, which is exactly
+        when the user wants to see where they are.
+        """
+        if self._pan_frame_timer is not None:
+            return
+        try:
+            timer = self.fig.canvas.new_timer(interval=PAN_FRAME_INTERVAL_MS)
+        except Exception:
+            # No timer support in this backend - fall back to drawing every event.
+            self.fig.canvas.draw_idle()
+            return
+        timer.single_shot = True
+        timer.add_callback(self._render_pan_frame)
+        self._pan_frame_timer = timer
+        timer.start()
+
+    def _render_pan_frame(self):
+        """Timer callback: paint the position accumulated since the last frame.
+
+        位图缓存能用就搬缓存(0.2ms), 不能用就完整重绘一次并顺便建立/重建缓存
+        (70-85ms)。不能用的情形: 刚按下还没有缓存、窗口尺寸变了、平移已经超出
+        PAN_CACHE_MAX_SHIFT。
+        """
+        self._pan_frame_timer = None
+        if not self._pan_active or self._pan_last_px is None:
+            self.fig.canvas.draw_idle()
+            return
+
+        cache = self._pan_cache
+        dx = dy = 0
+        if cache is not None and cache.ok:
+            dx = int(round(self._pan_last_px[0] - cache.origin_px[0]))
+            dy = int(round(self._pan_last_px[1] - cache.origin_px[1]))
+
+        usable = (cache is not None and cache.ok and cache.shift_fits(dx, dy) and
+                  cache.matches(self.fig.canvas, self.ax))
+        if usable and cache.blit(self.fig.canvas, self.ax, dx, dy):
+            # 空白带只在停手时才需要补齐, 拖动中一直搬缓存就行。
+            self._schedule_pan_settle()
+            return
+
+        # 退回完整绘制, 并以当前位置为原点重建缓存, 下一帧又能走 blit。
+        self._full_pan_frame()
+
+    def _full_pan_frame(self):
+        """完整重绘当前拖动位置, 并把这一帧的像素作为新的平移缓存。"""
+        self._cancel_pan_settle()
+        try:
+            self.fig.canvas.draw()
+        except Exception:
+            self.fig.canvas.draw_idle()
+            self._pan_cache = None
+            return
+        self._pan_cache = self._capture_pan_cache()
+
+    def _capture_pan_cache(self):
+        """抓下画布上坐标区那块像素, 作为后续平移的源。失败就返回 None(退回完整重绘)。"""
+        if self._pan_last_px is None:
+            return None
+        try:
+            cache = _PanBlitCache(self.fig.canvas, self.ax, self._pan_last_px)
+        except Exception:
+            return None
+        return cache if cache.ok else None
+
+    def _schedule_pan_settle(self):
+        """手停下来 PAN_SETTLE_MS 之后补一次完整重绘, 把空白带填上。"""
+        self._cancel_pan_settle()
+        try:
+            timer = self.fig.canvas.new_timer(interval=PAN_SETTLE_MS)
+        except Exception:
+            return
+        timer.single_shot = True
+        timer.add_callback(self._render_pan_settle)
+        self._pan_settle_timer = timer
+        timer.start()
+
+    def _render_pan_settle(self):
+        self._pan_settle_timer = None
+        if self._pan_active:
+            self._full_pan_frame()
+
+    def _cancel_pan_settle(self):
+        timer, self._pan_settle_timer = self._pan_settle_timer, None
+        if timer is not None:
+            try:
+                timer.stop()
+            except Exception:
+                pass
+
+    def _cancel_pan_frame(self):
+        """Drop any pending pan redraw (drag finished, or window going away)."""
+        self._cancel_pan_settle()
+        timer, self._pan_frame_timer = self._pan_frame_timer, None
+        if timer is not None:
+            try:
+                timer.stop()
+            except Exception:
+                pass
+
     def _on_motion(self, event):
         """Handle mouse motion - track hover and show preview after 0.5s, also handle panning."""
         if event.inaxes == self._team_action_ax and event.xdata is not None and event.ydata is not None:
@@ -1064,22 +1310,13 @@ class HexCore:
 
         # Handle right-click pan
         if self._pan_active and event.x is not None and event.y is not None:
-            # Convert the raw pixel position through the transform frozen at
-            # drag-start (not self.ax.transData, which shifts every frame as we
-            # pan) so the delta is measured in one consistent reference frame.
-            cur_x, cur_y = self._pan_transform.transform((event.x, event.y))
-            dx = cur_x - self._pan_start_x
-            dy = cur_y - self._pan_start_y
-
-            # Pan the map by adjusting axis limits (pan in opposite direction of mouse movement)
-            new_xlim = (self._pan_start_xlim[0] - dx, self._pan_start_xlim[1] - dx)
-            new_ylim = (self._pan_start_ylim[0] - dy, self._pan_start_ylim[1] - dy)
-
-            self.ax.set_xlim(new_xlim)
-            self.ax.set_ylim(new_ylim)
-            self.fig.canvas.draw_idle()
+            # Move the axes now (cheap), but let the timer decide when to paint:
+            # every intermediate event would otherwise cost a full redraw.
+            self._pan_last_px = (event.x, event.y)
+            self._update_pan_limits(event)
+            self._schedule_pan_frame()
             return  # Skip hover preview during pan
-        
+
         if event.inaxes != self.ax or event.xdata is None or event.ydata is None:
             self._clear_hover_preview()
             return
@@ -3283,6 +3520,11 @@ class HexCore:
     def _on_press(self, event):
         """Handle mouse button press - track right-click for panning."""
         if event.button == 3:  # Right mouse button
+            if event.xdata is None or event.ydata is None:
+                # 在坐标区外面(按钮那一条、图边空白)按右键: 没有数据坐标可做基准。
+                # 以前这里照样把 _pan_active 打开, 结果第一次移动就在
+                # `cur_x - self._pan_start_x` 上炸 TypeError。
+                return
             self._pan_active = True
             self._pan_start_x = event.xdata
             self._pan_start_y = event.ydata
@@ -3293,6 +3535,10 @@ class HexCore:
             # shifts every time we call set_xlim/set_ylim below), otherwise the
             # reference frame moves out from under the drag and the map jitters.
             self._pan_transform = self.ax.transData.inverted()
+            # 缓存留给第一帧去建: 那时坐标轴已经移到最新位置, 抓下来的像素和原点
+            # 天然对齐(见 _full_pan_frame)。这里只清掉上一次拖动的残留。
+            self._pan_cache = None
+            self._pan_last_px = (event.x, event.y)
 
     def _switch_to_team_and_latest_plus_one_day(self, team_num):
         """Switch to team and jump to one day after that team's latest move day."""
@@ -3348,9 +3594,20 @@ class HexCore:
 
     def _on_release(self, event):
         """Handle mouse button release - clear pan state."""
+        was_panning = self._pan_active
         self._pan_active = False
         self._pan_start_x = None
         self._pan_start_y = None
+
+        if was_panning:
+            # The last motion event may still be sitting behind an unfired timer.
+            # Cancel it and draw the final position ourselves, so letting go
+            # always leaves the map where the cursor left it. 这一次完整重绘同时
+            # 抹掉拖动期间的两个位图痕迹: 边上的空白带和跟着走的水印。
+            self._cancel_pan_frame()
+            self._pan_cache = None
+            self._pan_last_px = None
+            self.fig.canvas.draw_idle()
 
 
 
@@ -3358,7 +3615,11 @@ class HexCore:
         """Handle mouse scroll for zoom in/out."""
         if event.inaxes != self.ax:
             return  # Only zoom if scrolling over the main map
-        
+
+        # 缩放改变了比例尺, 拖动缓存里的像素不再对得上 —— 丢掉它。
+        # (_PanBlitCache.matches 只查画布尺寸, 查不出比例尺变化。)
+        self._pan_cache = None
+
         # Mark that user has zoomed
         self._has_zoomed = True
         

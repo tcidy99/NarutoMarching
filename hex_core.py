@@ -65,7 +65,9 @@ except Exception:
 
 import matplotlib.pyplot as plt
 from matplotlib.patches import RegularPolygon, Rectangle, Circle, Polygon
-from matplotlib.collections import PolyCollection
+from matplotlib.collections import PolyCollection, LineCollection
+from matplotlib.colors import to_rgba
+from matplotlib.image import AxesImage
 from matplotlib.transforms import Affine2D
 from matplotlib.widgets import Button
 from matplotlib.colors import hex2color
@@ -174,6 +176,111 @@ HEX_SIZE = 5
 # Display-only angled-view transform: stretch x wider, compress y
 X_SCALE = 1
 Y_SCALE = 0.6
+
+
+class _MapImageArtist(AxesImage):
+    """按当前视口大小选用合适分辨率的实景地图, 避免每帧重采样整张大图。
+
+    实景图有 2600x2119, matplotlib 的 imshow 每次重绘都会把整张图重采样到屏幕
+    尺寸(profile 里 matplotlib._image.resample 每帧约 90ms)。这里维护一个逐级
+    减半的图像金字塔: make_image 时按屏幕上实际占的像素数算出需要的层级, 缩得
+    远就喂小图, 放大到原始尺寸才用第 0 层。
+
+    _levels 是 {层级: 图像}, 第 0 层永远是原图, 其余层按需生成并缓存。
+    """
+
+    def __init__(self, ax, levels, initial_level=None, owner=None, **kwargs):
+        super().__init__(ax, **kwargs)
+        self._levels = levels
+        self._owner = owner
+        self._display_level = None
+        if initial_level is None:
+            # 没有上一帧的提示时, 先降到最长边约 2048 像素那一级
+            height, width = levels[0].shape[:2]
+            initial_level = max(0, int(np.log2(max(1.0, max(width, height) / 2048))))
+        # 每次重绘都会新建 artist, 传入上一帧用过的层级当初值, 省掉一次多余的
+        # set_data(视口通常没变, 猜中就不用再切)
+        self._use_level(initial_level)
+
+    def _use_level(self, level):
+        original = self._levels[0]
+        # PIL 只认 uint8 的 RGB/RGBA; 其它情况老老实实用原图
+        if original.dtype != np.uint8 or original.ndim != 3:
+            level = 0
+        if level == self._display_level:
+            return
+        if level not in self._levels:
+            from PIL import Image
+            height, width = original.shape[:2]
+            size = (max(1, width // 2 ** level), max(1, height // 2 ** level))
+            self._levels[level] = np.asarray(
+                Image.fromarray(original).resize(size, resample=Image.Resampling.BILINEAR))
+        self.set_data(self._levels[level])
+        self._display_level = level
+
+    def make_image(self, renderer, magnification=1.0, unsampled=False):
+        left, right, bottom, top = self.get_extent()
+        corners = self.get_transform().transform([(left, bottom), (right, top)])
+        display_width, display_height = np.maximum(np.abs(corners[1] - corners[0]), 1)
+        height, width = self._levels[0].shape[:2]
+        # ratio = 原图像素 / 屏幕像素; >1 说明缩小显示, 可以降一级
+        ratio = min(width / display_width, height / display_height) / magnification
+        level = max(0, int(np.floor(np.log2(max(1.0, ratio)))))
+        self._use_level(0 if unsampled else level)
+        if self._owner is not None:
+            # 记给下一帧当初值, 见 __init__ 的 initial_level
+            self._owner._map_image_level_hint = self._display_level
+        return super().make_image(renderer, magnification, unsampled=unsampled)
+
+
+class _RouteLineBatch:
+    """把路线笔画攒起来合批, 同时保留原有的先后顺序、线宽与虚线样式。
+
+    原先每条边都调一次 ax.plot(), 一张满图要建 1200+ 个 Line2D artist, 而
+    matplotlib 在每次 pan/zoom/重绘时都要遍历并重绘所有 artist —— 这是卡顿的
+    主因。这里按 (zorder, 端点样式) 分组, 每组只生成一个 LineCollection。
+
+    分组内部保持插入顺序, 组与组之间靠 zorder 排序, 所以叠放关系和逐条 plot
+    时完全一致。参数签名刻意和 ax.plot 对齐, 调用处只需把 ax.plot 换成
+    batch.plot 即可。
+    """
+
+    def __init__(self, ax):
+        self.ax = ax
+        self.layers = {}
+
+    def plot(self, xs, ys, *, color, lw, zorder, alpha=1.0, linestyle='solid',
+             solid_capstyle='round', solid_joinstyle='round'):
+        # 虚线在 matplotlib 里走 dash_capstyle/dash_joinstyle, 实线走 solid_*,
+        # 一个 LineCollection 只能有一种端点样式, 所以要按它再分一层。
+        dashed = linestyle != 'solid'
+        caps = matplotlib.rcParams['lines.dash_capstyle'] if dashed else solid_capstyle
+        joins = matplotlib.rcParams['lines.dash_joinstyle'] if dashed else solid_joinstyle
+
+        runs = self.layers.setdefault(zorder, [])
+        style = (caps, joins)
+        if not runs or runs[-1]['style'] != style:
+            runs.append(dict(style=style, segments=[], colors=[], widths=[], dashes=[]))
+        run = runs[-1]
+        run['segments'].append(np.column_stack((xs, ys)))
+        run['colors'].append(to_rgba(color, alpha))
+        run['widths'].append(lw)
+        run['dashes'].append(linestyle)
+
+    def flush(self):
+        for zorder, runs in self.layers.items():
+            for run in runs:
+                self.ax.add_collection(LineCollection(
+                    run['segments'],
+                    colors=run['colors'],
+                    linewidths=run['widths'],
+                    linestyles=run['dashes'],
+                    zorder=zorder,
+                    capstyle=run['style'][0],
+                    joinstyle=run['style'][1],
+                ))
+        self.layers.clear()
+
 
 # Unit hexagon vertex offsets - flat-top orientation (vertices at 0/60/120/.../300
 # degrees), matching redblobgames.com/grids/hexagons/ "flat topped" layout and the
@@ -560,7 +667,7 @@ class HexCore:
         self._pan_start_xlim = None  # Map x-axis limits at pan start
         self._pan_start_ylim = None  # Map y-axis limits at pan start
         self._pan_transform = None  # Data<->pixel transform frozen at pan start
-        
+
         self._show_bonus_labels = True  # Toggle for showing B/X/Z bonus hex labels
         
         self._status_msg = ''
@@ -925,7 +1032,7 @@ class HexCore:
             self._hover_path_line = None
             self.fig.canvas.draw_idle()
         self._hover_hex = None
-    
+
     def _on_motion(self, event):
         """Handle mouse motion - track hover and show preview after 0.5s, also handle panning."""
         if event.inaxes == self._team_action_ax and event.xdata is not None and event.ydata is not None:
@@ -3391,10 +3498,23 @@ class HexCore:
             # above) so that hex (ir, ic) positions line up with this same
             # data-coordinate system that team paths/markers already use -
             # nothing below this block needs to know which view mode is active.
-            self.ax.imshow(
-                self._map_image_array, extent=self._map_image_extent,
-                zorder=0, aspect='auto', interpolation='bilinear',
+            # 用 _MapImageArtist 而不是 ax.imshow: 它会按视口挑分辨率, 缩得远时
+            # 不必每帧重采样整张 2600x2119 的大图。金字塔挂在实例上跨重绘复用,
+            # 图片换了(_load_map_image 重新赋值)就重建。
+            if getattr(self, '_map_image_levels_src', None) is not self._map_image_array:
+                self._map_image_levels = {0: self._map_image_array}
+                self._map_image_levels_src = self._map_image_array
+            image_artist = _MapImageArtist(
+                self.ax, self._map_image_levels,
+                initial_level=getattr(self, '_map_image_level_hint', None),
+                owner=self,
+                extent=self._map_image_extent,
+                zorder=0, interpolation='bilinear', resample=True,
             )
+            self._map_image_artist = image_artist
+            self.ax.add_image(image_artist)
+            image_artist.set_clip_path(self.ax.patch)
+            self.ax.set_aspect('auto')
             if show_labels:
                 for ir in range(ROWS):
                     for ic in range(COLS):
@@ -3470,6 +3590,9 @@ class HexCore:
         # Draw paths for each team
         line_width_factor = 1.4  # 2x wider than previous path width setting
         teams = [(self.team1, 1), (self.team2, 2), (self.team3, 3)]
+        # 路线的每条边原来都是一次 ax.plot(), 满图 1200+ 个 artist, 重绘极慢。
+        # 改为攒进 _RouteLineBatch, 循环结束后一次性 flush 成若干 LineCollection。
+        route_batch = _RouteLineBatch(self.ax)
         for team, team_num in teams:
             if team is None:
                 continue
@@ -3618,7 +3741,7 @@ class HexCore:
                                 curve_x = (1 - tvals) ** 2 * x0 + 2 * (1 - tvals) * tvals * x1 + tvals ** 2 * x2
                                 curve_y = (1 - tvals) ** 2 * y0 + 2 * (1 - tvals) * tvals * y1 + tvals ** 2 * y2
 
-                                self.ax.plot(
+                                route_batch.plot(
                                     curve_x,
                                     curve_y,
                                     color=color,
@@ -3660,17 +3783,17 @@ class HexCore:
                     # Day boundary edge: cut solid line and use dashed connector.
                     if seg_day != prev_day_for_edge:
                         if is_selected_edit_day_edge:
-                            self.ax.plot(xs, ys, color='white',
+                            route_batch.plot(xs, ys, color='white',
                                          lw=3.0 * (3.1 * path_line_scale * line_width_factor),
                                          linestyle=(0, (2.2, 3.2)), alpha=0.95, zorder=8,
                                          solid_capstyle='round', solid_joinstyle='round')
                         if seg_day == self.current_day:
                             dash_lw = 0.95 * path_line_scale * line_width_factor
-                            self.ax.plot(xs, ys, color=highlight_color,
+                            route_batch.plot(xs, ys, color=highlight_color,
                                          lw=0.75 * (dash_lw + (0.95 * path_line_scale * line_width_factor)),
                                          linestyle=(0, (2.2, 3.2)), alpha=1.0, zorder=6,
                                          solid_capstyle='round', solid_joinstyle='round')
-                        self.ax.plot(xs, ys, color=edge_color,
+                        route_batch.plot(xs, ys, color=edge_color,
                                      lw=0.95 * path_line_scale * line_width_factor,
                                      linestyle=(0, (2.2, 3.2)), alpha=edge_alpha, zorder=7,
                                      solid_capstyle='round', solid_joinstyle='round')
@@ -3681,23 +3804,23 @@ class HexCore:
                         base_lw = 2.5 * path_line_scale * jump_width_factor * line_width_factor
                         outline_lw = base_lw + (1.45 * path_line_scale * line_width_factor)
                         if is_selected_edit_day_edge:
-                            self.ax.plot(xs, ys, color='white',
+                            route_batch.plot(xs, ys, color='white',
                                          lw=3.0 * (outline_lw + (1.15 * path_line_scale * line_width_factor)),
                                          alpha=0.95, zorder=4,
                                          solid_capstyle='round', solid_joinstyle='round')
-                        self.ax.plot(xs, ys, color=highlight_color,
+                        route_batch.plot(xs, ys, color=highlight_color,
                                      lw=1.0 * outline_lw, alpha=1.0, zorder=5,
                                      solid_capstyle='round', solid_joinstyle='round')
-                        self.ax.plot(xs, ys, color=edge_color,
+                        route_batch.plot(xs, ys, color=edge_color,
                                      lw=base_lw, alpha=edge_alpha, zorder=6,
                                      solid_capstyle='round', solid_joinstyle='round')
                     else:
                         if is_selected_edit_day_edge:
-                            self.ax.plot(xs, ys, color='white',
+                            route_batch.plot(xs, ys, color='white',
                                          lw=3.0 * ((2.5 * path_line_scale * jump_width_factor * line_width_factor) + (1.6 * path_line_scale * line_width_factor)),
                                          alpha=0.95,
                                          zorder=2, solid_capstyle='round', solid_joinstyle='round')
-                        self.ax.plot(xs, ys, color=edge_color,
+                        route_batch.plot(xs, ys, color=edge_color,
                                      lw=2.5 * path_line_scale * jump_width_factor * line_width_factor,
                                      alpha=edge_alpha,
                                      zorder=3, solid_capstyle='round', solid_joinstyle='round')
@@ -3717,6 +3840,10 @@ class HexCore:
             # During day-edit redraw, keep future-day paths visible as preview overlay.
             if self._show_future_paths:
                 self._draw_day_edit_future_preview(team, self.team_colors[team_num])
+
+        # 三队的线都攒完了, 这里一次性生成 LineCollection。zorder 由每组自带,
+        # 所以和原先逐条 plot 的叠放顺序一致。
+        route_batch.flush()
 
         self._draw_segment_edit_targets()
 

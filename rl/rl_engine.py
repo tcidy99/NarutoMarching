@@ -10,7 +10,9 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+import os as _os, sys as _sys
+_sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
+import _rlpath  # noqa: F401  统一把 rl/ 与仓库根加进 sys.path, 并校正工作目录
 import hex_pathfinding_demo as game
 from rl_playground import ActionType, RouteAction
 
@@ -207,6 +209,26 @@ class NarutoMarchingEngine(game.PathfindingDemo):
             return 3
         raise ValueError("unknown team")
 
+    def _create_team(self, team_number: int):
+        """开 2 队或 3 队, 走的就是 GUI 那两个按钮的同一段代码。
+
+        新队伍开在**当前激活队伍所在的格子**上, 不需要也不接受坐标参数
+        (_set_team2_start / _set_team3_start 自己取 active_team.full_path[-1])。
+        created_day 记为当前天, 所以开得越早, 这支队伍能攒的步数越多。
+        """
+        team_number = int(team_number)
+        if team_number not in (2, 3):
+            raise ValueError("create_team requires team 2 or 3")
+        if self.active_team is None:
+            raise RuntimeError("no active team to create the new team from")
+        if (self.team2 if team_number == 2 else self.team3) is not None:
+            raise RuntimeError(f"team {team_number} already exists")
+        if team_number == 2:
+            self._set_team2_start()
+        else:
+            self._set_team3_start()
+        return self.active_team
+
     def _select_team(self, team_number: int):
         team = {1: self.team1, 2: self.team2, 3: self.team3}.get(int(team_number))
         if team is None:
@@ -268,9 +290,16 @@ class NarutoMarchingEngine(game.PathfindingDemo):
         before = self.get_observation()
         if not isinstance(action, RouteAction):
             raise TypeError("action must be a RouteAction")
-        self._select_team(action.team)
+        if action.action_type == ActionType.CREATE_TEAM:
+            # 建队的 team 字段指的是"要开哪一支", 那支队伍此刻当然还不存在,
+            # 所以不能先 _select_team —— 它会因为队伍是 None 而报错。
+            self._create_team(action.team)
+        else:
+            self._select_team(action.team)
 
-        if action.action_type == ActionType.MOVE_TO_HEX:
+        if action.action_type == ActionType.CREATE_TEAM:
+            pass  # 已在上面处理
+        elif action.action_type == ActionType.MOVE_TO_HEX:
             if action.target is None:
                 raise ValueError("move_to_hex requires target")
             self.current_day = max(self.current_day, self.active_team.max_day_reached)
@@ -306,6 +335,13 @@ class NarutoMarchingEngine(game.PathfindingDemo):
         info = self._action_info(before, action)
         info["observation_before"] = before
         info["observation_after"] = after
-        reward = after["total_reward"] - before["total_reward"]
+        # 注意: 这一位返回的是**游戏积分**的增量(一局能累到七万), 不是训练奖励。
+        # 引擎层只负责如实报告游戏发生了什么; 训练奖励是另一套数, 由
+        # rl_gym_env._transition_reward 用 TRAINING_REWARD 配置单独算出来。
+        # 千万不要把这个值直接喂给 PPO —— 量级差三四个数量级, 会把所有 shaping
+        # 项彻底淹没。要取它请用 info["game_score_delta"], 名字写清楚。
+        game_score_delta = after["total_reward"] - before["total_reward"]
+        info["game_score_delta"] = game_score_delta
+        info["game_total_reward"] = after["total_reward"]
         done = self.current_day >= game.TOTAL_DAYS
-        return after, reward, done, info
+        return after, game_score_delta, done, info

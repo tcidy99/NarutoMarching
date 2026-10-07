@@ -12,7 +12,9 @@ from enum import Enum
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+import os as _os, sys as _sys
+_sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
+import _rlpath  # noqa: F401  统一把 rl/ 与仓库根加进 sys.path, 并校正工作目录
 from hex_pathfinding_demo import RAW_MAP, ROWS, COLS, _astar, _neighbors, _passable, _terrain
 
 Hex = Tuple[int, int]
@@ -27,6 +29,12 @@ class ActionType(str, Enum):
     SETTLE_EXPLORATION = "settle_exploration"
     ADVANCE_DAY = "advance_day"
     CHOOSE_PORTAL = "choose_portal"
+    # 建 2 队 / 3 队。游戏里最多三支队伍, team1 从出生点 ST 自动创建, 2/3 队要玩家
+    # 主动在"当前激活队伍所在的那一格"上开出来(游戏规则文档 §4.1)。以前 agent 没有
+    # 这个动作, 所以整局只能用一支队伍 —— 而步数是每队独立结算的, 少两支队伍等于
+    # 白白少掉三分之二的行动力。target 不用填: 位置就是激活队伍的当前位置;
+    # team 填 2 或 3, 表示要开哪一支。
+    CREATE_TEAM = "create_team"
 
 
 @dataclass(frozen=True)

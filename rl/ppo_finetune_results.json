@@ -1,0 +1,1452 @@
+{
+ "best": {
+  "episode": 90,
+  "game_score": 66463,
+  "occupied": 1112,
+  "final_day": 97,
+  "steps": 1504,
+  "elapsed": 563.0
+ },
+ "results": [
+  {
+   "episode": 1,
+   "game_score": 8050,
+   "occupied": 17,
+   "final_day": 1,
+   "steps": 2600,
+   "elapsed": 3.4
+  },
+  {
+   "episode": 2,
+   "game_score": 9285,
+   "occupied": 43,
+   "final_day": 3,
+   "steps": 2600,
+   "elapsed": 6.3
+  },
+  {
+   "episode": 3,
+   "game_score": 8775,
+   "occupied": 37,
+   "final_day": 2,
+   "steps": 2600,
+   "elapsed": 9.7
+  },
+  {
+   "episode": 4,
+   "game_score": 7980,
+   "occupied": 15,
+   "final_day": 1,
+   "steps": 2600,
+   "elapsed": 13.6
+  },
+  {
+   "episode": 5,
+   "game_score": 8710,
+   "occupied": 36,
+   "final_day": 2,
+   "steps": 2600,
+   "elapsed": 16.4
+  },
+  {
+   "episode": 6,
+   "game_score": 8050,
+   "occupied": 17,
+   "final_day": 1,
+   "steps": 2600,
+   "elapsed": 19.7
+  },
+  {
+   "episode": 7,
+   "game_score": 9865,
+   "occupied": 56,
+   "final_day": 3,
+   "steps": 2600,
+   "elapsed": 22.5
+  },
+  {
+   "episode": 8,
+   "game_score": 8815,
+   "occupied": 38,
+   "final_day": 2,
+   "steps": 2600,
+   "elapsed": 24.8
+  },
+  {
+   "episode": 9,
+   "game_score": 9820,
+   "occupied": 55,
+   "final_day": 3,
+   "steps": 2600,
+   "elapsed": 27.5
+  },
+  {
+   "episode": 10,
+   "game_score": 10090,
+   "occupied": 62,
+   "final_day": 3,
+   "steps": 2600,
+   "elapsed": 29.5
+  },
+  {
+   "episode": 11,
+   "game_score": 9810,
+   "occupied": 55,
+   "final_day": 3,
+   "steps": 2600,
+   "elapsed": 32.2
+  },
+  {
+   "episode": 12,
+   "game_score": 10570,
+   "occupied": 66,
+   "final_day": 4,
+   "steps": 2600,
+   "elapsed": 36.2
+  },
+  {
+   "episode": 13,
+   "game_score": 8505,
+   "occupied": 31,
+   "final_day": 2,
+   "steps": 2600,
+   "elapsed": 38.1
+  },
+  {
+   "episode": 14,
+   "game_score": 9865,
+   "occupied": 57,
+   "final_day": 3,
+   "steps": 2600,
+   "elapsed": 40.5
+  },
+  {
+   "episode": 15,
+   "game_score": 9285,
+   "occupied": 43,
+   "final_day": 3,
+   "steps": 2600,
+   "elapsed": 43.2
+  },
+  {
+   "episode": 16,
+   "game_score": 10600,
+   "occupied": 67,
+   "final_day": 4,
+   "steps": 2600,
+   "elapsed": 47.0
+  },
+  {
+   "episode": 17,
+   "game_score": 16350,
+   "occupied": 193,
+   "final_day": 17,
+   "steps": 2600,
+   "elapsed": 54.6
+  },
+  {
+   "episode": 18,
+   "game_score": 13460,
+   "occupied": 129,
+   "final_day": 11,
+   "steps": 2600,
+   "elapsed": 58.3
+  },
+  {
+   "episode": 19,
+   "game_score": 8975,
+   "occupied": 43,
+   "final_day": 2,
+   "steps": 2600,
+   "elapsed": 60.7
+  },
+  {
+   "episode": 20,
+   "game_score": 10610,
+   "occupied": 67,
+   "final_day": 4,
+   "steps": 2600,
+   "elapsed": 64.6
+  },
+  {
+   "episode": 21,
+   "game_score": 27580,
+   "occupied": 394,
+   "final_day": 32,
+   "steps": 2600,
+   "elapsed": 72.6
+  },
+  {
+   "episode": 22,
+   "game_score": 9775,
+   "occupied": 54,
+   "final_day": 5,
+   "steps": 2600,
+   "elapsed": 75.4
+  },
+  {
+   "episode": 23,
+   "game_score": 23941,
+   "occupied": 341,
+   "final_day": 28,
+   "steps": 2600,
+   "elapsed": 80.4
+  },
+  {
+   "episode": 24,
+   "game_score": 9285,
+   "occupied": 43,
+   "final_day": 2,
+   "steps": 2600,
+   "elapsed": 83.0
+  },
+  {
+   "episode": 25,
+   "game_score": 9285,
+   "occupied": 43,
+   "final_day": 2,
+   "steps": 2600,
+   "elapsed": 85.8
+  },
+  {
+   "episode": 26,
+   "game_score": 13430,
+   "occupied": 129,
+   "final_day": 10,
+   "steps": 2600,
+   "elapsed": 88.3
+  },
+  {
+   "episode": 27,
+   "game_score": 10600,
+   "occupied": 67,
+   "final_day": 4,
+   "steps": 2600,
+   "elapsed": 95.1
+  },
+  {
+   "episode": 28,
+   "game_score": 9775,
+   "occupied": 54,
+   "final_day": 3,
+   "steps": 2600,
+   "elapsed": 97.6
+  },
+  {
+   "episode": 29,
+   "game_score": 41755,
+   "occupied": 658,
+   "final_day": 55,
+   "steps": 2600,
+   "elapsed": 104.7
+  },
+  {
+   "episode": 30,
+   "game_score": 24530,
+   "occupied": 345,
+   "final_day": 28,
+   "steps": 2600,
+   "elapsed": 116.2
+  },
+  {
+   "episode": 31,
+   "game_score": 9410,
+   "occupied": 54,
+   "final_day": 4,
+   "steps": 2600,
+   "elapsed": 124.2
+  },
+  {
+   "episode": 32,
+   "game_score": 38240,
+   "occupied": 618,
+   "final_day": 60,
+   "steps": 2600,
+   "elapsed": 137.3
+  },
+  {
+   "episode": 33,
+   "game_score": 61236,
+   "occupied": 1051,
+   "final_day": 91,
+   "steps": 2600,
+   "elapsed": 146.3
+  },
+  {
+   "episode": 34,
+   "game_score": 65494,
+   "occupied": 1103,
+   "final_day": 97,
+   "steps": 1750,
+   "elapsed": 153.8
+  },
+  {
+   "episode": 35,
+   "game_score": 9285,
+   "occupied": 43,
+   "final_day": 2,
+   "steps": 2600,
+   "elapsed": 156.7
+  },
+  {
+   "episode": 36,
+   "game_score": 65720,
+   "occupied": 1112,
+   "final_day": 97,
+   "steps": 2089,
+   "elapsed": 165.8
+  },
+  {
+   "episode": 37,
+   "game_score": 39920,
+   "occupied": 605,
+   "final_day": 51,
+   "steps": 2600,
+   "elapsed": 172.2
+  },
+  {
+   "episode": 38,
+   "game_score": 65935,
+   "occupied": 1103,
+   "final_day": 97,
+   "steps": 1613,
+   "elapsed": 180.1
+  },
+  {
+   "episode": 39,
+   "game_score": 40080,
+   "occupied": 613,
+   "final_day": 52,
+   "steps": 2600,
+   "elapsed": 186.4
+  },
+  {
+   "episode": 40,
+   "game_score": 9865,
+   "occupied": 57,
+   "final_day": 3,
+   "steps": 2600,
+   "elapsed": 188.7
+  },
+  {
+   "episode": 41,
+   "game_score": 33740,
+   "occupied": 502,
+   "final_day": 41,
+   "steps": 2600,
+   "elapsed": 200.7
+  },
+  {
+   "episode": 42,
+   "game_score": 21685,
+   "occupied": 291,
+   "final_day": 24,
+   "steps": 2600,
+   "elapsed": 205.6
+  },
+  {
+   "episode": 43,
+   "game_score": 58268,
+   "occupied": 993,
+   "final_day": 84,
+   "steps": 2600,
+   "elapsed": 218.6
+  },
+  {
+   "episode": 44,
+   "game_score": 10090,
+   "occupied": 61,
+   "final_day": 4,
+   "steps": 2600,
+   "elapsed": 221.4
+  },
+  {
+   "episode": 45,
+   "game_score": 26615,
+   "occupied": 391,
+   "final_day": 32,
+   "steps": 2600,
+   "elapsed": 225.7
+  },
+  {
+   "episode": 46,
+   "game_score": 65259,
+   "occupied": 1122,
+   "final_day": 97,
+   "steps": 1549,
+   "elapsed": 232.8
+  },
+  {
+   "episode": 47,
+   "game_score": 27000,
+   "occupied": 377,
+   "final_day": 31,
+   "steps": 2600,
+   "elapsed": 244.2
+  },
+  {
+   "episode": 48,
+   "game_score": 27530,
+   "occupied": 403,
+   "final_day": 34,
+   "steps": 2600,
+   "elapsed": 254.4
+  },
+  {
+   "episode": 49,
+   "game_score": 65829,
+   "occupied": 1104,
+   "final_day": 97,
+   "steps": 1622,
+   "elapsed": 261.6
+  },
+  {
+   "episode": 50,
+   "game_score": 14990,
+   "occupied": 163,
+   "final_day": 14,
+   "steps": 2600,
+   "elapsed": 265.3
+  },
+  {
+   "episode": 51,
+   "game_score": 34610,
+   "occupied": 521,
+   "final_day": 54,
+   "steps": 2600,
+   "elapsed": 278.2
+  },
+  {
+   "episode": 52,
+   "game_score": 64698,
+   "occupied": 1149,
+   "final_day": 97,
+   "steps": 1975,
+   "elapsed": 286.1
+  },
+  {
+   "episode": 53,
+   "game_score": 65974,
+   "occupied": 1103,
+   "final_day": 97,
+   "steps": 1585,
+   "elapsed": 293.3
+  },
+  {
+   "episode": 54,
+   "game_score": 66020,
+   "occupied": 1112,
+   "final_day": 97,
+   "steps": 1583,
+   "elapsed": 300.8
+  },
+  {
+   "episode": 55,
+   "game_score": 48769,
+   "occupied": 775,
+   "final_day": 66,
+   "steps": 2600,
+   "elapsed": 313.3
+  },
+  {
+   "episode": 56,
+   "game_score": 65499,
+   "occupied": 1094,
+   "final_day": 96,
+   "steps": 2600,
+   "elapsed": 322.4
+  },
+  {
+   "episode": 57,
+   "game_score": 33740,
+   "occupied": 527,
+   "final_day": 46,
+   "steps": 2600,
+   "elapsed": 328.2
+  },
+  {
+   "episode": 58,
+   "game_score": 65490,
+   "occupied": 1101,
+   "final_day": 97,
+   "steps": 1601,
+   "elapsed": 335.5
+  },
+  {
+   "episode": 59,
+   "game_score": 13005,
+   "occupied": 117,
+   "final_day": 9,
+   "steps": 2600,
+   "elapsed": 338.7
+  },
+  {
+   "episode": 60,
+   "game_score": 26435,
+   "occupied": 382,
+   "final_day": 32,
+   "steps": 2600,
+   "elapsed": 343.5
+  },
+  {
+   "episode": 61,
+   "game_score": 16315,
+   "occupied": 192,
+   "final_day": 17,
+   "steps": 2600,
+   "elapsed": 347.8
+  },
+  {
+   "episode": 62,
+   "game_score": 64429,
+   "occupied": 1090,
+   "final_day": 94,
+   "steps": 2600,
+   "elapsed": 360.5
+  },
+  {
+   "episode": 63,
+   "game_score": 65815,
+   "occupied": 1112,
+   "final_day": 97,
+   "steps": 1892,
+   "elapsed": 369.7
+  },
+  {
+   "episode": 64,
+   "game_score": 18915,
+   "occupied": 237,
+   "final_day": 20,
+   "steps": 2600,
+   "elapsed": 373.9
+  },
+  {
+   "episode": 65,
+   "game_score": 8505,
+   "occupied": 31,
+   "final_day": 2,
+   "steps": 2600,
+   "elapsed": 377.7
+  },
+  {
+   "episode": 66,
+   "game_score": 9820,
+   "occupied": 56,
+   "final_day": 3,
+   "steps": 2600,
+   "elapsed": 380.0
+  },
+  {
+   "episode": 67,
+   "game_score": 65857,
+   "occupied": 1104,
+   "final_day": 97,
+   "steps": 1547,
+   "elapsed": 386.7
+  },
+  {
+   "episode": 68,
+   "game_score": 16105,
+   "occupied": 177,
+   "final_day": 15,
+   "steps": 2600,
+   "elapsed": 389.9
+  },
+  {
+   "episode": 69,
+   "game_score": 65899,
+   "occupied": 1102,
+   "final_day": 97,
+   "steps": 1600,
+   "elapsed": 397.0
+  },
+  {
+   "episode": 70,
+   "game_score": 17390,
+   "occupied": 220,
+   "final_day": 20,
+   "steps": 2600,
+   "elapsed": 406.0
+  },
+  {
+   "episode": 71,
+   "game_score": 65809,
+   "occupied": 1104,
+   "final_day": 97,
+   "steps": 1970,
+   "elapsed": 414.1
+  },
+  {
+   "episode": 72,
+   "game_score": 7980,
+   "occupied": 15,
+   "final_day": 1,
+   "steps": 2600,
+   "elapsed": 417.7
+  },
+  {
+   "episode": 73,
+   "game_score": 65589,
+   "occupied": 1124,
+   "final_day": 97,
+   "steps": 1557,
+   "elapsed": 425.5
+  },
+  {
+   "episode": 74,
+   "game_score": 65759,
+   "occupied": 1118,
+   "final_day": 97,
+   "steps": 1849,
+   "elapsed": 434.6
+  },
+  {
+   "episode": 75,
+   "game_score": 65594,
+   "occupied": 1122,
+   "final_day": 97,
+   "steps": 1752,
+   "elapsed": 443.3
+  },
+  {
+   "episode": 76,
+   "game_score": 9285,
+   "occupied": 43,
+   "final_day": 2,
+   "steps": 2600,
+   "elapsed": 446.0
+  },
+  {
+   "episode": 77,
+   "game_score": 64714,
+   "occupied": 1110,
+   "final_day": 95,
+   "steps": 2600,
+   "elapsed": 457.6
+  },
+  {
+   "episode": 78,
+   "game_score": 65734,
+   "occupied": 1114,
+   "final_day": 97,
+   "steps": 1548,
+   "elapsed": 465.0
+  },
+  {
+   "episode": 79,
+   "game_score": 65405,
+   "occupied": 1098,
+   "final_day": 97,
+   "steps": 1565,
+   "elapsed": 472.8
+  },
+  {
+   "episode": 80,
+   "game_score": 39661,
+   "occupied": 620,
+   "final_day": 62,
+   "steps": 2600,
+   "elapsed": 486.9
+  },
+  {
+   "episode": 81,
+   "game_score": 65585,
+   "occupied": 1098,
+   "final_day": 97,
+   "steps": 1568,
+   "elapsed": 494.3
+  },
+  {
+   "episode": 82,
+   "game_score": 12930,
+   "occupied": 113,
+   "final_day": 9,
+   "steps": 2600,
+   "elapsed": 502.2
+  },
+  {
+   "episode": 83,
+   "game_score": 65864,
+   "occupied": 1102,
+   "final_day": 97,
+   "steps": 1846,
+   "elapsed": 509.4
+  },
+  {
+   "episode": 84,
+   "game_score": 33575,
+   "occupied": 500,
+   "final_day": 43,
+   "steps": 2600,
+   "elapsed": 517.3
+  },
+  {
+   "episode": 85,
+   "game_score": 65967,
+   "occupied": 1107,
+   "final_day": 97,
+   "steps": 1688,
+   "elapsed": 524.5
+  },
+  {
+   "episode": 86,
+   "game_score": 61314,
+   "occupied": 1108,
+   "final_day": 97,
+   "steps": 2252,
+   "elapsed": 535.3
+  },
+  {
+   "episode": 87,
+   "game_score": 65534,
+   "occupied": 1127,
+   "final_day": 97,
+   "steps": 1550,
+   "elapsed": 542.6
+  },
+  {
+   "episode": 88,
+   "game_score": 65659,
+   "occupied": 1105,
+   "final_day": 97,
+   "steps": 1556,
+   "elapsed": 549.5
+  },
+  {
+   "episode": 89,
+   "game_score": 65804,
+   "occupied": 1105,
+   "final_day": 97,
+   "steps": 1546,
+   "elapsed": 556.3
+  },
+  {
+   "episode": 90,
+   "game_score": 66463,
+   "occupied": 1112,
+   "final_day": 97,
+   "steps": 1504,
+   "elapsed": 563.0
+  },
+  {
+   "episode": 91,
+   "game_score": 13175,
+   "occupied": 122,
+   "final_day": 10,
+   "steps": 2600,
+   "elapsed": 571.6
+  },
+  {
+   "episode": 92,
+   "game_score": 34900,
+   "occupied": 511,
+   "final_day": 53,
+   "steps": 2600,
+   "elapsed": 584.5
+  },
+  {
+   "episode": 93,
+   "game_score": 35100,
+   "occupied": 542,
+   "final_day": 55,
+   "steps": 2600,
+   "elapsed": 597.8
+  },
+  {
+   "episode": 94,
+   "game_score": 65704,
+   "occupied": 1116,
+   "final_day": 97,
+   "steps": 1519,
+   "elapsed": 604.6
+  },
+  {
+   "episode": 95,
+   "game_score": 65598,
+   "occupied": 1137,
+   "final_day": 97,
+   "steps": 1665,
+   "elapsed": 610.8
+  },
+  {
+   "episode": 96,
+   "game_score": 63588,
+   "occupied": 1153,
+   "final_day": 97,
+   "steps": 1583,
+   "elapsed": 617.9
+  },
+  {
+   "episode": 97,
+   "game_score": 54022,
+   "occupied": 869,
+   "final_day": 82,
+   "steps": 2600,
+   "elapsed": 631.3
+  },
+  {
+   "episode": 98,
+   "game_score": 65466,
+   "occupied": 1111,
+   "final_day": 97,
+   "steps": 2056,
+   "elapsed": 639.0
+  },
+  {
+   "episode": 99,
+   "game_score": 63729,
+   "occupied": 1048,
+   "final_day": 97,
+   "steps": 2268,
+   "elapsed": 650.1
+  },
+  {
+   "episode": 100,
+   "game_score": 53182,
+   "occupied": 858,
+   "final_day": 82,
+   "steps": 2600,
+   "elapsed": 663.2
+  },
+  {
+   "episode": 101,
+   "game_score": 65839,
+   "occupied": 1106,
+   "final_day": 97,
+   "steps": 1533,
+   "elapsed": 670.5
+  },
+  {
+   "episode": 102,
+   "game_score": 33109,
+   "occupied": 504,
+   "final_day": 50,
+   "steps": 2600,
+   "elapsed": 682.2
+  },
+  {
+   "episode": 103,
+   "game_score": 65944,
+   "occupied": 1102,
+   "final_day": 97,
+   "steps": 1603,
+   "elapsed": 689.2
+  },
+  {
+   "episode": 104,
+   "game_score": 66056,
+   "occupied": 1095,
+   "final_day": 97,
+   "steps": 1595,
+   "elapsed": 696.7
+  },
+  {
+   "episode": 105,
+   "game_score": 64544,
+   "occupied": 1141,
+   "final_day": 97,
+   "steps": 1594,
+   "elapsed": 703.6
+  },
+  {
+   "episode": 106,
+   "game_score": 51129,
+   "occupied": 835,
+   "final_day": 79,
+   "steps": 2600,
+   "elapsed": 717.7
+  },
+  {
+   "episode": 107,
+   "game_score": 24083,
+   "occupied": 349,
+   "final_day": 40,
+   "steps": 2600,
+   "elapsed": 726.3
+  },
+  {
+   "episode": 108,
+   "game_score": 65830,
+   "occupied": 1109,
+   "final_day": 97,
+   "steps": 1589,
+   "elapsed": 733.8
+  },
+  {
+   "episode": 109,
+   "game_score": 57339,
+   "occupied": 933,
+   "final_day": 81,
+   "steps": 2600,
+   "elapsed": 747.0
+  },
+  {
+   "episode": 110,
+   "game_score": 63294,
+   "occupied": 1127,
+   "final_day": 97,
+   "steps": 1774,
+   "elapsed": 754.9
+  },
+  {
+   "episode": 111,
+   "game_score": 32630,
+   "occupied": 487,
+   "final_day": 50,
+   "steps": 2600,
+   "elapsed": 767.5
+  },
+  {
+   "episode": 112,
+   "game_score": 65998,
+   "occupied": 1122,
+   "final_day": 97,
+   "steps": 1666,
+   "elapsed": 775.1
+  },
+  {
+   "episode": 113,
+   "game_score": 65994,
+   "occupied": 1104,
+   "final_day": 97,
+   "steps": 2014,
+   "elapsed": 785.1
+  },
+  {
+   "episode": 114,
+   "game_score": 62710,
+   "occupied": 1042,
+   "final_day": 94,
+   "steps": 2600,
+   "elapsed": 794.2
+  },
+  {
+   "episode": 115,
+   "game_score": 65739,
+   "occupied": 1102,
+   "final_day": 97,
+   "steps": 1577,
+   "elapsed": 801.7
+  },
+  {
+   "episode": 116,
+   "game_score": 65435,
+   "occupied": 1117,
+   "final_day": 97,
+   "steps": 1557,
+   "elapsed": 809.4
+  },
+  {
+   "episode": 117,
+   "game_score": 35947,
+   "occupied": 616,
+   "final_day": 58,
+   "steps": 2600,
+   "elapsed": 822.5
+  },
+  {
+   "episode": 118,
+   "game_score": 54029,
+   "occupied": 876,
+   "final_day": 83,
+   "steps": 2600,
+   "elapsed": 836.9
+  },
+  {
+   "episode": 119,
+   "game_score": 65830,
+   "occupied": 1106,
+   "final_day": 97,
+   "steps": 1558,
+   "elapsed": 844.4
+  },
+  {
+   "episode": 120,
+   "game_score": 28665,
+   "occupied": 433,
+   "final_day": 37,
+   "steps": 2600,
+   "elapsed": 848.7
+  },
+  {
+   "episode": 121,
+   "game_score": 65890,
+   "occupied": 1102,
+   "final_day": 97,
+   "steps": 1602,
+   "elapsed": 856.6
+  },
+  {
+   "episode": 122,
+   "game_score": 64410,
+   "occupied": 1096,
+   "final_day": 97,
+   "steps": 1823,
+   "elapsed": 865.4
+  },
+  {
+   "episode": 123,
+   "game_score": 10215,
+   "occupied": 64,
+   "final_day": 5,
+   "steps": 2600,
+   "elapsed": 868.7
+  },
+  {
+   "episode": 124,
+   "game_score": 65909,
+   "occupied": 1103,
+   "final_day": 97,
+   "steps": 1541,
+   "elapsed": 875.6
+  },
+  {
+   "episode": 125,
+   "game_score": 32638,
+   "occupied": 533,
+   "final_day": 45,
+   "steps": 2600,
+   "elapsed": 883.1
+  },
+  {
+   "episode": 126,
+   "game_score": 62606,
+   "occupied": 1128,
+   "final_day": 97,
+   "steps": 1843,
+   "elapsed": 891.8
+  },
+  {
+   "episode": 127,
+   "game_score": 65954,
+   "occupied": 1106,
+   "final_day": 97,
+   "steps": 1559,
+   "elapsed": 898.9
+  },
+  {
+   "episode": 128,
+   "game_score": 65580,
+   "occupied": 1109,
+   "final_day": 97,
+   "steps": 1606,
+   "elapsed": 906.4
+  },
+  {
+   "episode": 129,
+   "game_score": 65470,
+   "occupied": 1099,
+   "final_day": 97,
+   "steps": 1752,
+   "elapsed": 914.2
+  },
+  {
+   "episode": 130,
+   "game_score": 65830,
+   "occupied": 1104,
+   "final_day": 97,
+   "steps": 1631,
+   "elapsed": 921.1
+  },
+  {
+   "episode": 131,
+   "game_score": 65695,
+   "occupied": 1102,
+   "final_day": 97,
+   "steps": 1583,
+   "elapsed": 928.1
+  },
+  {
+   "episode": 132,
+   "game_score": 65020,
+   "occupied": 1126,
+   "final_day": 97,
+   "steps": 1655,
+   "elapsed": 935.3
+  },
+  {
+   "episode": 133,
+   "game_score": 35130,
+   "occupied": 552,
+   "final_day": 55,
+   "steps": 2600,
+   "elapsed": 948.2
+  },
+  {
+   "episode": 134,
+   "game_score": 63832,
+   "occupied": 1082,
+   "final_day": 97,
+   "steps": 2028,
+   "elapsed": 957.9
+  },
+  {
+   "episode": 135,
+   "game_score": 65864,
+   "occupied": 1109,
+   "final_day": 97,
+   "steps": 1535,
+   "elapsed": 964.7
+  },
+  {
+   "episode": 136,
+   "game_score": 40674,
+   "occupied": 681,
+   "final_day": 65,
+   "steps": 2600,
+   "elapsed": 977.7
+  },
+  {
+   "episode": 137,
+   "game_score": 65214,
+   "occupied": 1109,
+   "final_day": 97,
+   "steps": 2076,
+   "elapsed": 985.8
+  },
+  {
+   "episode": 138,
+   "game_score": 65429,
+   "occupied": 1111,
+   "final_day": 97,
+   "steps": 1581,
+   "elapsed": 992.8
+  },
+  {
+   "episode": 139,
+   "game_score": 65004,
+   "occupied": 1113,
+   "final_day": 97,
+   "steps": 1560,
+   "elapsed": 999.8
+  },
+  {
+   "episode": 140,
+   "game_score": 39545,
+   "occupied": 631,
+   "final_day": 63,
+   "steps": 2600,
+   "elapsed": 1012.7
+  },
+  {
+   "episode": 141,
+   "game_score": 64307,
+   "occupied": 1122,
+   "final_day": 97,
+   "steps": 2003,
+   "elapsed": 1021.3
+  },
+  {
+   "episode": 142,
+   "game_score": 14615,
+   "occupied": 150,
+   "final_day": 27,
+   "steps": 2600,
+   "elapsed": 1035.9
+  },
+  {
+   "episode": 143,
+   "game_score": 65544,
+   "occupied": 1118,
+   "final_day": 97,
+   "steps": 1863,
+   "elapsed": 1043.6
+  },
+  {
+   "episode": 144,
+   "game_score": 61798,
+   "occupied": 1135,
+   "final_day": 97,
+   "steps": 1754,
+   "elapsed": 1051.6
+  },
+  {
+   "episode": 145,
+   "game_score": 65728,
+   "occupied": 1131,
+   "final_day": 97,
+   "steps": 1621,
+   "elapsed": 1056.7
+  },
+  {
+   "episode": 146,
+   "game_score": 65759,
+   "occupied": 1104,
+   "final_day": 97,
+   "steps": 1579,
+   "elapsed": 1063.7
+  },
+  {
+   "episode": 147,
+   "game_score": 65666,
+   "occupied": 1110,
+   "final_day": 97,
+   "steps": 1647,
+   "elapsed": 1070.7
+  },
+  {
+   "episode": 148,
+   "game_score": 65614,
+   "occupied": 1107,
+   "final_day": 97,
+   "steps": 1584,
+   "elapsed": 1077.9
+  },
+  {
+   "episode": 149,
+   "game_score": 48229,
+   "occupied": 774,
+   "final_day": 74,
+   "steps": 2600,
+   "elapsed": 1092.5
+  },
+  {
+   "episode": 150,
+   "game_score": 66189,
+   "occupied": 1109,
+   "final_day": 97,
+   "steps": 1531,
+   "elapsed": 1099.2
+  },
+  {
+   "episode": 151,
+   "game_score": 34030,
+   "occupied": 530,
+   "final_day": 54,
+   "steps": 2600,
+   "elapsed": 1113.3
+  },
+  {
+   "episode": 152,
+   "game_score": 59900,
+   "occupied": 1106,
+   "final_day": 97,
+   "steps": 2455,
+   "elapsed": 1127.1
+  },
+  {
+   "episode": 153,
+   "game_score": 64479,
+   "occupied": 1127,
+   "final_day": 97,
+   "steps": 1658,
+   "elapsed": 1135.3
+  },
+  {
+   "episode": 154,
+   "game_score": 65979,
+   "occupied": 1104,
+   "final_day": 97,
+   "steps": 1582,
+   "elapsed": 1142.6
+  },
+  {
+   "episode": 155,
+   "game_score": 65554,
+   "occupied": 1114,
+   "final_day": 97,
+   "steps": 1549,
+   "elapsed": 1150.0
+  },
+  {
+   "episode": 156,
+   "game_score": 10600,
+   "occupied": 67,
+   "final_day": 6,
+   "steps": 2600,
+   "elapsed": 1154.2
+  },
+  {
+   "episode": 157,
+   "game_score": 66463,
+   "occupied": 1110,
+   "final_day": 97,
+   "steps": 1689,
+   "elapsed": 1160.2
+  },
+  {
+   "episode": 158,
+   "game_score": 65910,
+   "occupied": 1117,
+   "final_day": 97,
+   "steps": 1543,
+   "elapsed": 1168.0
+  },
+  {
+   "episode": 159,
+   "game_score": 65779,
+   "occupied": 1107,
+   "final_day": 97,
+   "steps": 1507,
+   "elapsed": 1174.9
+  },
+  {
+   "episode": 160,
+   "game_score": 37555,
+   "occupied": 579,
+   "final_day": 58,
+   "steps": 2600,
+   "elapsed": 1189.6
+  },
+  {
+   "episode": 161,
+   "game_score": 62890,
+   "occupied": 1146,
+   "final_day": 97,
+   "steps": 1889,
+   "elapsed": 1198.3
+  },
+  {
+   "episode": 162,
+   "game_score": 64580,
+   "occupied": 1114,
+   "final_day": 97,
+   "steps": 1798,
+   "elapsed": 1206.8
+  },
+  {
+   "episode": 163,
+   "game_score": 46735,
+   "occupied": 769,
+   "final_day": 72,
+   "steps": 2600,
+   "elapsed": 1219.1
+  },
+  {
+   "episode": 164,
+   "game_score": 64719,
+   "occupied": 1122,
+   "final_day": 97,
+   "steps": 1525,
+   "elapsed": 1226.2
+  },
+  {
+   "episode": 165,
+   "game_score": 42165,
+   "occupied": 700,
+   "final_day": 59,
+   "steps": 2600,
+   "elapsed": 1231.4
+  },
+  {
+   "episode": 166,
+   "game_score": 43540,
+   "occupied": 718,
+   "final_day": 69,
+   "steps": 2600,
+   "elapsed": 1245.9
+  },
+  {
+   "episode": 167,
+   "game_score": 18957,
+   "occupied": 270,
+   "final_day": 37,
+   "steps": 2600,
+   "elapsed": 1263.7
+  },
+  {
+   "episode": 168,
+   "game_score": 64764,
+   "occupied": 1120,
+   "final_day": 97,
+   "steps": 1577,
+   "elapsed": 1270.4
+  },
+  {
+   "episode": 169,
+   "game_score": 33515,
+   "occupied": 525,
+   "final_day": 55,
+   "steps": 2600,
+   "elapsed": 1281.1
+  },
+  {
+   "episode": 170,
+   "game_score": 45605,
+   "occupied": 768,
+   "final_day": 63,
+   "steps": 2600,
+   "elapsed": 1293.5
+  },
+  {
+   "episode": 171,
+   "game_score": 64215,
+   "occupied": 1144,
+   "final_day": 97,
+   "steps": 1667,
+   "elapsed": 1301.2
+  },
+  {
+   "episode": 172,
+   "game_score": 65805,
+   "occupied": 1113,
+   "final_day": 97,
+   "steps": 1556,
+   "elapsed": 1308.1
+  },
+  {
+   "episode": 173,
+   "game_score": 65369,
+   "occupied": 1108,
+   "final_day": 97,
+   "steps": 1614,
+   "elapsed": 1315.7
+  },
+  {
+   "episode": 174,
+   "game_score": 65959,
+   "occupied": 1108,
+   "final_day": 97,
+   "steps": 1570,
+   "elapsed": 1322.6
+  },
+  {
+   "episode": 175,
+   "game_score": 64706,
+   "occupied": 1122,
+   "final_day": 97,
+   "steps": 1586,
+   "elapsed": 1329.7
+  },
+  {
+   "episode": 176,
+   "game_score": 44979,
+   "occupied": 774,
+   "final_day": 73,
+   "steps": 2600,
+   "elapsed": 1344.2
+  },
+  {
+   "episode": 177,
+   "game_score": 52192,
+   "occupied": 820,
+   "final_day": 70,
+   "steps": 2600,
+   "elapsed": 1349.5
+  },
+  {
+   "episode": 178,
+   "game_score": 54685,
+   "occupied": 897,
+   "final_day": 82,
+   "steps": 2600,
+   "elapsed": 1356.7
+  },
+  {
+   "episode": 179,
+   "game_score": 55427,
+   "occupied": 952,
+   "final_day": 87,
+   "steps": 2600,
+   "elapsed": 1370.1
+  },
+  {
+   "episode": 180,
+   "game_score": 65219,
+   "occupied": 1120,
+   "final_day": 97,
+   "steps": 1596,
+   "elapsed": 1377.7
+  }
+ ]
+}

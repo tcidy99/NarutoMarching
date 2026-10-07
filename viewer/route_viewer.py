@@ -16,7 +16,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import hex_core as game
 import matplotlib.pyplot as plt
-from matplotlib.collections import LineCollection
+import matplotlib.patheffects as patheffects
+from matplotlib.collections import LineCollection, PolyCollection
+from matplotlib.transforms import Affine2D
 
 
 # Buttons tied to modifying a route (drawing, undoing, editing, saving,
@@ -48,6 +50,23 @@ _DISPLAY_TOGGLE_BUTTONS = (
     '_btn_chk_labels',
     '_btn_global_stat',
 )
+
+
+# 当日路线的格子底色: 半透明压在实景地图上(地块内容仍要看得见), 压在路线线条下面
+# (zorder 比路线的 9/10 低、比地块的 1 和背景图的 0 高), 号码另画在最上层。
+#
+# 底色取队伍路线色, 但先往白里提一大截: 1 队的路线色是纯黑, 直接铺上去在深色地块上
+# 几乎看不出变化; 提亮之后变成灰色薄雾, 压在深浅两种地块上都能一眼认出来, 同时仍然
+# 保留队伍的色相(2 队偏红、3 队偏蓝), 三队同一天行动时分得开。
+_STEP_HEX_LIGHTEN = 0.55
+_STEP_HEX_ALPHA = 0.5
+_STEP_HEX_ZORDER = 4
+# 号码字号 = 格子在屏幕上的尺寸 x 这个系数 —— 号码始终占格子的固定比例, 缩放时
+# 大小跟着格子走, 不会像按线宽算那样放大后涨出格外。
+#
+# 所有号码一个字号, 不按位数缩: 两位数不能把单个数字画得比一位数小, 否则同一天的
+# 号码看着大小不一。两位数因此会占得宽一些, 这是刻意的。
+_STEP_LABEL_FONT_RATIO = 0.55
 
 
 def _lighten_color(hex_color, amount=0.4):
@@ -95,7 +114,11 @@ class RouteViewerApp(game.HexCore):
         self._show_future_paths = False
         self._show_bonus_labels = False
 
-        self.fig.canvas.manager.set_window_title('远征路线查看器 S25 (只读)')
+        # 基类会在每次重绘时按 _window_base_title + 存档名(+改动星号)重设标题, 所以
+        # 这里只改基础标题, 不能直接 set_window_title —— 那样会被下一次重绘盖掉。
+        # 查看器改不了路线, 星号永远不会出现。
+        self._window_base_title = '远征路线查看器 S25 (只读)'
+        self._update_window_title()
         self._status_msg = '路线查看器：点击"读取"加载存档。'
         self._show_image_map_on_startup()
         self._draw()
@@ -308,51 +331,78 @@ class RouteViewerApp(game.HexCore):
                 entry['numbers'].append(step_number)
         return step_hexes
 
-    def _draw_day_step_numbers(self):
-        """Overlay each hex on the currently-viewed day's route with its step number(s).
+    def _hex_screen_size_pt(self):
+        """一个格子当前在屏幕上有多大(单位 pt), 取"高"和"宽 x 0.85"里小的那个。
 
-        Circle diameter and font size are both derived from the same
-        zoom-aware path-line-width formula _draw() uses for route lines, so
-        they refresh together with the route line thickness on zoom. Each
-        circle is filled with that hex's team's route color lightened 40%.
+        号码字号按这个数算, 所以无论怎么缩放, 号码永远占格子的固定比例。之前是按
+        路线线宽(_get_path_line_scale)推算字号的 —— 那个系数是为线条调的, 放大之后
+        号码会明显涨出格子外面, 相邻两格的号码叠在一起。
+
+        取宽的 0.85 是因为格子是平顶六边形: 左右两头是尖角, 能放字的宽度比外接宽度窄。
+        """
+        try:
+            dy = float(game.np.sqrt(3) * game.HEX_SIZE * game.Y_SCALE)  # 行间距 = 格高
+            dx = float(2 * game.HEX_SIZE * game.X_SCALE)                # 格子外接宽度
+            (x0, y0), (x1, y1) = self.ax.transData.transform([(0.0, 0.0), (dx, dy)])
+            px_per_pt = self.fig.dpi / 72.0
+            h_pt = abs(y1 - y0) / px_per_pt
+            w_pt = abs(x1 - x0) / px_per_pt
+            return max(min(h_pt, w_pt * 0.85), 1.0)
+        except Exception:
+            return 12.0
+
+    def _draw_day_step_numbers(self):
+        """给当日要走的每个地块铺一层半透明底色, 并在格心标出步序号。
+
+        以前的做法是在格心画一个小圆圈当号码牌(scatter + text)。圆圈本身挡住了地块
+        图案, 而且"今天要走哪几格"得靠一串小圆点去认。现在改成整格上色: 半透明压在
+        实景地图上, 地块内容照样看得见, 一眼就能圈出当天的范围。
+
+        底色取该格所属队伍的路线色再往白里提(_STEP_HEX_LIGHTEN), 三队同一天行动时
+        仍然分得开。色块压在**当日**路线下面(z=4, 当日路线是 5/6), 所以今天这条线
+        照旧完整地画在上面; 号码盖在最上层, 白字加黑描边, 落在深色或浅色底上都读
+        得出来。
+
+        色块尺寸就是地块本身, 不随缩放变形; 字号按格子的屏幕尺寸算
+        (_hex_screen_size_pt), 所以号码始终占格子的固定比例。
         """
         step_hexes = self._compute_day_action_step_numbers(self.current_day)
         if not step_hexes:
             return
 
-        line_width_factor = 1.4  # matches the route-line width formula in _draw()
-        path_line_scale = self._get_path_line_scale()
-        line_width_pt = 2.5 * path_line_scale * line_width_factor
-        circle_diameter_pt = line_width_pt * 3
-        font_size_pt = max(4.0, circle_diameter_pt * 0.5)
+        # 一个字号画到底: 一位数两位数一样大(见 _STEP_LABEL_FONT_RATIO)。
+        font_size_pt = max(4.0, self._hex_screen_size_pt() * _STEP_LABEL_FONT_RATIO)
 
-        # One scatter call for every circle (instead of one ax.plot() per hex)
-        # plus per-hex text labels - far fewer standing artists means pan/zoom
-        # has much less to re-render each frame.
-        xs, ys, facecolors = [], [], []
+        # 一次 PolyCollection 画完所有色块(而不是每格一个 patch): 平移缩放时每帧都要
+        # 重画全部常驻 artist, artist 越少越跟手 —— 和基类批量画地块是同一个理由。
+        verts, facecolors = [], []
         for hex_pos, entry in step_hexes.items():
             ir, ic = hex_pos
             if not (0 <= ir < game.ROWS and 0 <= ic < game.COLS):
                 continue
             cx, cy = game._center(ir, ic)
-            x, y = cx * game.X_SCALE, cy * game.Y_SCALE
-            xs.append(x)
-            ys.append(y)
-            facecolors.append(_lighten_color(self.team_colors[entry['team_num']], 0.4))
+            verts.append(game._HEX_VERT_OFFSETS + (cx, cy))
+            facecolors.append(_lighten_color(
+                self.team_colors[entry['team_num']], _STEP_HEX_LIGHTEN))
             label = ','.join(str(n) for n in sorted(entry['numbers']))
             self.ax.text(
-                x, y, label, ha='center', va='center',
-                fontsize=font_size_pt, fontweight='bold', color='black', zorder=21,
+                cx * game.X_SCALE, cy * game.Y_SCALE, label,
+                ha='center', va='center',
+                fontsize=font_size_pt, fontweight='bold',
+                color='white', zorder=21,
+                path_effects=[patheffects.withStroke(
+                    linewidth=max(0.8, font_size_pt * 0.16), foreground='black')],
             )
 
-        if xs:
-            self.ax.scatter(
-                xs, ys, s=circle_diameter_pt ** 2,
-                facecolors=facecolors, edgecolors='black',
-                linewidths=max(0.6, line_width_pt * 0.3),
-                zorder=20,
+        if verts:
+            overlay = PolyCollection(
+                verts, facecolors=facecolors, edgecolors='none',
+                alpha=_STEP_HEX_ALPHA, zorder=_STEP_HEX_ZORDER,
             )
-
+            # 顶点是未缩放的格子坐标, 和基类画地块用的是同一套变换。
+            overlay.set_transform(
+                Affine2D().scale(game.X_SCALE, game.Y_SCALE) + self.ax.transData)
+            self.ax.add_collection(overlay)
 
     def _on_click(self, event):
         """Keep pan-release and the day-badge picker; drop map path drawing."""

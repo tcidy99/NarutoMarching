@@ -55,9 +55,15 @@ def test_completion_milestones_are_one_time_rewards():
     after["visited_hexes"] = frozenset(g_hexes + tent_hexes[:15])
     info = {"score_delta": 0}
     reward = env._transition_reward(before, after, info, False, ActionType.MOVE_TO_HEX)
-    assert reward == 800.0
-    assert info["reward_breakdown"]["g_complete_bonus"] == 500.0
-    assert info["reward_breakdown"]["tent_complete_bonus"] == 300.0
+    # 原来这里写死了 reward == 800.0 / 500.0 / 300.0。那是旧奖励表的数字, 而且
+    # 就算在旧表下也对不上 —— 这一步同时占了二十多个新格, new_hex 那一项也会计入,
+    # 总数不可能正好等于两个里程碑之和。这个用例从没真正跑过(没装 gymnasium 时
+    # 它自己 return 了), 所以一直没人发现。改成只校验里程碑本身, 不写死总数。
+    breakdown = info["reward_breakdown"]
+    assert breakdown["g_complete_bonus"] == env.reward_config["g_complete"]
+    assert breakdown["tent_complete_bonus"] == env.reward_config["tent_complete"]
+    assert reward == breakdown["total"]
+    assert reward > breakdown["g_complete_bonus"] + breakdown["tent_complete_bonus"]
 
     reward_again = env._transition_reward(after, after, {"score_delta": 0}, False, ActionType.MOVE_TO_HEX)
     assert reward_again == 0.0
@@ -87,7 +93,18 @@ def test_move_is_rejected_when_selected_team_has_no_steps():
     env.engine.current_day = 4
     env.engine._rebuild_day_records()
     env.engine.day_records[3]["team1_steps_remain"] = 0
-    _observation, reward, terminated, truncated, info = env.step([0, 0, 0, 0, 0])
+    # 目标必须是相邻格。原来写死的 [0,0,0,0,0] 指向 (0,0), 离出生点十万八千里,
+    # 于是先撞上"必须是相邻格"那条检查, 根本走不到"今日步数用完"这条 ——
+    # 这个用例同样从没真正跑过。
+    # 而且还不能随便挑一个相邻格: 步数为 0 时踩一个"未占领且 step>0"的相邻格
+    # 是合法的蹭步(规则 §4.3), 不该被拒。要触发"没步数"这条, 目标得是一个不能
+    # 蹭的格子 —— 这里把它先标成已占领。
+    start = tuple(env.engine.team1.full_path[-1])
+    adjacent = next(p for p in game._neighbors(*start) if game._passable(*p))
+    env.engine.all_visited_hexes.add(adjacent)
+    _observation, reward, terminated, truncated, info = env.step(
+        [0, 0, adjacent[0], adjacent[1], 0]
+    )
     assert reward == -env.reward_config["invalid_action"]
     assert not terminated and not truncated
     assert info["invalid_action"] is True

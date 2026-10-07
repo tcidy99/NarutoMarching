@@ -945,17 +945,42 @@ class PathfindingDemo(HexCore):
         self._status_msg = f'圈地模式已开启：可自由画路线，退出时将从 Day {self._enclosure_start_day} 自动分配到未来天数。'
         self._draw()
 
+    def _enclosure_overdrawn_team(self):
+        """刚行动的那支队伍有没有把总步数画成负数; 返回队号(1/2/3), 否则 None。
+
+        两个刻意的选择:
+
+        · 只看**当前激活的那支队伍**, 不扫全部三队。存档里本来就可能有某支队伍的
+          未来天数是超支的(圈地开启前就欠着), 扫全部的话一点开圈地就被立刻踢出来。
+        · 用 self.current_day 作为起算日, 和按钮上显示的那个数字口径完全一致 ——
+          需求是"按钮上的数字变负就退出", 两处口径不一致就会出现"显示还是正数却被
+          踢出去"这种事。
+        """
+        if not self._enclosure_mode or self.active_team is None:
+            return None
+        if self._get_team_total_remaining_steps(self.active_team, self.current_day) >= 0:
+            return None
+        for team_number, team in ((1, self.team1), (2, self.team2), (3, self.team3)):
+            if team is self.active_team:
+                return team_number
+        return None
+
     def _finish_enclosure_mode(self):
         start_day = self._enclosure_start_day or self.current_day
         self._recost_segments_from_day(start_day)
         for team in (self.team1, self.team2, self.team3):
             if team is not None:
                 self._derive_team_buff_state(team)
-        self._rebalance_all_teams_from_day(start_day, preserve_future_days=False)
+        # 这个返回值别丢: 它表示"有段根本塞不进赛季剩下的天数"。下面的
+        # _team_has_step_overflow_from 只看每天有没有超过步数上限, 抓不到这种情况 ——
+        # 段被压到最后一天之前, 它们曾经被分配到 day 98/99/100(赛季只有 97 天),
+        # 每天都只有 6 步、看起来毫无问题, 于是圈地退出时报告"已分配完成"。
+        season_overflow = self._rebalance_all_teams_from_day(
+            start_day, preserve_future_days=False)
         self._rebuild_shared_derived_state_from_segments()
         self._rebuild_day_records()
 
-        has_step_overflow = any(
+        has_step_overflow = season_overflow or any(
             self._team_has_step_overflow_from(team, max(start_day, team.created_day))
             for team in (self.team1, self.team2, self.team3)
             if team is not None
@@ -2839,6 +2864,9 @@ class PathfindingDemo(HexCore):
             print(f'DEBUG: File write complete. File size: {os.path.getsize(file_path)} bytes')
             
             root.destroy()
+            # 只保存到某一天时, 文件里的路线比内存里的短 —— 这种情况标题上的星号要
+            # 继续留着(内存和文件确实不一致), 只把挂着的文件名换成新存的这个。
+            self._mark_save_file(file_path, clean=(save_through_day is None))
             scope_text = f'Day {self.current_day}' if save_current_day else 'all routes'
             self._status_msg = f'Game saved ({scope_text}) to {os.path.basename(file_path)}'
             self._draw()
@@ -2961,6 +2989,32 @@ class PathfindingDemo(HexCore):
             if self._is_active_day_edit():
                 self.current_day = self._day_edit_context['day']
 
+            # 圈地模式下按钮显示的是"从开启那天到赛季末的总剩余步数"(见
+            # _get_team_total_remaining_steps)。这个数归零就意味着这支队伍到赛季结束
+            # 都没步数可用了, 不能再往下画。
+            if self._enclosure_mode and self.active_team is not None:
+                remaining_total = self._get_team_total_remaining_steps(
+                    self.active_team, self.current_day)
+                if remaining_total <= 0:
+                    self._status_msg = (
+                        f'圈地：这支队伍到 Day {TOTAL_DAYS} 的步数已用完'
+                        f'（剩余 {remaining_total}），不能再画了。'
+                        '请切换到别的队伍，或退出圈地模式。'
+                    )
+                    self._draw()
+                    return
+                # 粮草是三队共用的一个池子, 所以这道闸门不分队伍: 总余粮见底之后
+                # 谁都不能再画了(切队也没用)。
+                remaining_food = self._get_total_remaining_food(self.current_day)
+                if remaining_food <= 0:
+                    self._status_msg = (
+                        f'圈地：到 Day {TOTAL_DAYS} 的总粮草已用完'
+                        f'（剩余 {remaining_food}，三队共用），不能再画了。'
+                        '请退出圈地模式并减少路线。'
+                    )
+                    self._draw()
+                    return
+
             day_locked, last_move_day = self._is_active_team_locked_by_day()
             if day_locked and not self._is_active_day_edit() and not self._enclosure_mode:
                 self._status_msg = (
@@ -3055,13 +3109,31 @@ class PathfindingDemo(HexCore):
                     # Apply Z bonus if active
                     if self.active_team.z_bonus_remaining > 0 and is_new_hex and not defer_capture:
                         seg_award = _apply_z_bonus(seg_award, self.active_team)
+                        # 用掉一次就要扣一次。这里以前只加成、不扣减, 于是战勋窗口
+                        # 凭空多盖一格(存档 debug 应533余10 实557余10: Z2 的 8 格窗口
+                        # 实际盖了 9 格, 第 9 格多记 24 分)。上面几行 B 折扣是扣了的,
+                        # 重算路径 _recost_segments_from_day 的 fresh_capture 对飞行
+                        # 落地也是"应用 + 扣减"成对的 —— 漏的只有实时这一处。
+                        #
+                        # 什么时候会走到这里: defer_capture 为假的新格占领, 也就是
+                        # 圈地模式下飞雷神落地(圈地时落地即占领), 或者飞到 step<=0 的
+                        # 地块(砺练 L、传送门这类, 平时也是落地即占领)。
+                        self.active_team.z_bonus_remaining -= 1
                     seg_steps = 0  # Fly doesn't use steps
                     # If terrain gives steps back (e.g. Tent step=-1), apply benefit for new hexes
                     if pos not in self.all_visited_hexes:
                         terrain_step_val = t.get('step', 1)
                         if terrain_step_val < 0:
                             seg_steps = terrain_step_val  # e.g. Tent gives -1 → team gains 1 step
-                    
+                        elif self._enclosure_mode and terrain_step_val > 0:
+                            # 圈地模式下, 飞到普通地块(可占领、非传送门、非营地, 即
+                            # step > 0)也要算一步。
+                            # 平时飞雷神不耗步数是对的, 但圈地是"先把未来若干天的路线
+                            # 一次画完, 退出时按每日步数上限摊到各天"—— 一次 0 步的飞行
+                            # 会让路线凭空变长而不占用任何步数预算, 摊回去的时候就对不上,
+                            # 按钮上那个总剩余步数也不会动。
+                            seg_steps = 1
+
                     # Check if already visited
                     if pos in self.all_visited_hexes:
                         seg_food = 10
@@ -3674,8 +3746,22 @@ class PathfindingDemo(HexCore):
             if self._is_active_day_edit():
                 self._finalize_day_segment_edit_if_connected()
 
+            # 圈地时一步可能跨多格、吃掉好几步, 所以上面那道"归零就不让画"的闸门
+            # 挡不住"从剩 1 步走了一段 3 步"这种情况 —— 走完才发现超支。这时按约定
+            # 立即结算并退出圈地模式(_finish_enclosure_mode 会把路线摊到未来各天,
+            # 并在仍然超支时给出提示)。
+            if self._enclosure_mode and self._enclosure_overdrawn_team() is not None:
+                team_number = self._enclosure_overdrawn_team()
+                self._finish_enclosure_mode()
+                self._status_msg = (
+                    f'{team_number} 队步数已超支，圈地模式已自动结算并退出。'
+                    + ('（' + self._status_msg + '）' if self._status_msg else '')
+                )
+                self._draw()
+                return
+
             self._auto_save_game()  # Auto-save after normal pathfinding
-            
+
             self._draw()
         except Exception as e:
             import traceback

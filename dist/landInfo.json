@@ -414,13 +414,13 @@
     "award": 0
   },
   "map_files": {
-    "csv": "map_尸鬼红唇.csv",
+    "csv": "map_S25.csv",
     "image": "S25_map_rectified_transparent.png",
     "image_extent": "S25_map_rectified_extent.json"
   },
   "season": {
     "start_date": "2026-09-11",
-    "duration_days": 90
+    "duration_days": 97
   },
   "team_colors": {
     "1": "#000000",

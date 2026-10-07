@@ -6,7 +6,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+import os as _os, sys as _sys
+_sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
+import _rlpath  # noqa: F401  统一把 rl/ 与仓库根加进 sys.path, 并校正工作目录
 import hex_pathfinding_demo as game
 from rl_engine import NarutoMarchingEngine
 from rl_playground import ActionType, RouteAction

@@ -111,6 +111,7 @@ TEAM_COLORS = {
     for team_num, default_color in _DEFAULT_TEAM_COLORS.items()
 }
 APP_BACKGROUND_COLOR = '#4C4A55'
+GLOBAL_STAT_TITLE = '全局统计'
 
 # 全局统计 window size. The per-phase capture columns (八卦前/后, 帐篷1/2阶段,
 # 圈地阶段) make the land table twice as wide as it used to be, so the window is
@@ -838,10 +839,16 @@ class HexCore:
         # Team colors
         self.team_colors = dict(TEAM_COLORS)
 
+        # 窗口标题 = 基础标题 + 当前存档名( + 改动过就带个星号)。基础标题存成属性,
+        # 子类(查看器)改这一个值就行, 不必自己去调 set_window_title —— 否则标题会被
+        # _update_window_title 盖掉。
+        self._window_base_title = '微信157-亡夜迫邪-远征模拟器S25'
+        self._save_file_name = None          # 读取/保存过的文件名(只留 basename)
+        self._saved_route_signature = None   # 存盘那一刻的路线指纹, 用来判断有没有改动
+
         self.fig = plt.figure(figsize=(16, 10))
         self.fig.patch.set_facecolor(APP_BACKGROUND_COLOR)
-        self.fig.canvas.manager.set_window_title(
-            '微信157-亡夜迫邪-远征模拟器S25')
+        self.fig.canvas.manager.set_window_title(self._window_base_title)
         
         # Create main map axes - enlarged so map uses more of the window area.
         self.ax = self.fig.add_axes([0.01, 0.05, 0.905, 0.93])
@@ -1893,10 +1900,21 @@ class HexCore:
         return False
 
     def _rebalance_enclosure_segments_from_day(self, start_day):
-        """Distribute enclosure-mode future routes across teams day by day."""
+        """Distribute enclosure-mode future routes across teams day by day.
+
+        返回 True 表示有段塞不进赛季剩下的天数里(真超支)。
+
+        这里以前有个 bug: 往后推天数的循环没有上界, 于是圈地画多了之后会把段分配到
+        day 98/99/100...(赛季只有 TOTAL_DAYS=97 天)。那些天在界面上不存在、也导不出,
+        所以看起来就像"退出圈地后没有把行动分配到各天"。
+        兄弟函数 _rebalance_team_segment_days_from 早就有这道钳制(见它里面
+        `if current_day >= TOTAL_DAYS: overflow = True`), 这里漏了 —— 现在按同样的
+        约定处理: 到了最后一天就不再往后发新天号, 剩下的段全压在最后一天并报超支。
+        """
         teams = [t for t in (self.team1, self.team2, self.team3) if t is not None]
         if not teams:
-            return
+            return False
+        overflow = False
 
         start_day = max(1, int(start_day))
 
@@ -1978,6 +1996,17 @@ class HexCore:
                 # A single oversized segment may need future accumulated food/steps.
                 pass
 
+            # 已经站在赛季最后一天了: 不能再往后发天号(没有那些天), 把剩下没放下的
+            # 段全部压在最后一天, 并标记超支 —— 让 _finish_enclosure_mode 去提示用户
+            # "减少路线"。以前这里无脑 current_day += 1, 就会造出 day 98/99/100。
+            if current_day >= TOTAL_DAYS:
+                for team in teams:
+                    while next_idx[team] < len(team._seg_days):
+                        team._seg_days[next_idx[team]] = TOTAL_DAYS
+                        next_idx[team] += 1
+                        overflow = True
+                break
+
             current_day += 1
             food_remaining += 1600
             for team in teams:
@@ -1989,6 +2018,7 @@ class HexCore:
                 team.max_day_reached = max(team.created_day, max(team._seg_days))
             else:
                 team.max_day_reached = team.created_day
+        return overflow
 
     def _rebalance_all_teams_from_day(self, start_day, max_passes=8, preserve_future_days=True):
         """Iteratively rebalance all teams from a day to satisfy shared food and team steps.
@@ -2002,8 +2032,9 @@ class HexCore:
             return False
 
         if not preserve_future_days:
-            self._rebalance_enclosure_segments_from_day(start_day)
-            return False
+            # 以前这里写死 return False, 所以圈地退出时即使真的塞不下也报"已分配完成",
+            # 用户看不到任何提示。现在把子函数的超支结果如实传出去。
+            return self._rebalance_enclosure_segments_from_day(start_day)
 
         rebalance_start = max(1, int(start_day))
         overflow = False
@@ -2307,28 +2338,106 @@ class HexCore:
             self._set_fly_button_border('#777777', 0.8)  # Default border
             self._btn_fly.label.set_color('black')
 
+    def _get_team_total_remaining_steps(self, team, from_day=None):
+        """这支队伍从 from_day 起到赛季结束, 总共还剩多少步可用。
+
+        圈地模式下按钮要显示的是这个数, 而不是当日剩余步数 —— 圈地就是"先把未来
+        几天的路线一次画出来, 退出时再按每日上限摊到各天", 所以画的时候需要看到的
+        是整段时间的步数总预算, 而且要随着画的过程递减。
+
+        算法必须和 _rebuild_day_records 里那套存款规则完全一致, 否则两处会飘:
+        每天先 +6、封顶 18, 再扣掉当天用掉的; 存款可以为负(欠账带到后面的天)。
+        差别只有一点: 这里**不做 max(0, ...) 截断** —— 圈地时当天往往已经超支,
+        截断成 0 之后数字就不再往下走了, 而需求正是要它继续递减。
+        """
+        if team is None:
+            return 0
+        from_day = self.current_day if from_day is None else int(from_day)
+        from_day = max(1, min(from_day, TOTAL_DAYS))
+
+        used_by_day = {}
+        for seg_day, seg_steps in zip(team._seg_days, team._seg_steps):
+            used_by_day[seg_day] = used_by_day.get(seg_day, 0) + seg_steps
+
+        # 先把 from_day(含)之前的存款结算出来, 得到进入 from_day 时的余额
+        bank = 0
+        for day in range(1, from_day + 1):
+            if team.created_day > day:
+                continue
+            bank = min(bank + 6, 18) - used_by_day.get(day, 0)
+
+        # 之后每一天再发 6 步, 并扣掉那些天已经记下的消耗
+        future_days = [day for day in range(from_day + 1, TOTAL_DAYS + 1)
+                       if team.created_day <= day]
+        total = bank + 6 * len(future_days)
+        for day in future_days:
+            total -= used_by_day.get(day, 0)
+        return total
+
+    def _get_total_remaining_food(self, from_day=None):
+        """从 from_day 起到赛季结束, 总共还剩多少粮草。
+
+        圈地模式下"余粮"那一格要显示的是这个数, 而不是当日余粮 —— 圈地是"先把未来
+        若干天的路线一次画完, 退出时再摊到各天", 所以画的时候看的应该是整段时间的
+        粮草总预算, 并随着画的过程递减。与队伍按钮上的总剩余步数是同一个道理。
+
+        算法和 _rebuild_day_records 里的粮草账保持一致: 第 1 天 6800, 之后每天 +1600,
+        逐日扣掉当天的消耗。这里同样**不做下限截断** —— 画超了要能看到负数, 否则数字
+        卡在 0 就看不出还差多少。
+        """
+        from_day = self.current_day if from_day is None else int(from_day)
+        from_day = max(1, min(from_day, TOTAL_DAYS))
+
+        used_by_day = {}
+        for team in (self.team1, self.team2, self.team3):
+            if team is None:
+                continue
+            for seg_day, seg_food in zip(team._seg_days, team._seg_foods):
+                day = int(seg_day)
+                used_by_day[day] = used_by_day.get(day, 0) + seg_food
+
+        # 进入 from_day 当天、扣掉当天消耗之后剩多少
+        food = 6800
+        for day in range(1, from_day + 1):
+            if day > 1:
+                food += 1600
+            food -= used_by_day.get(day, 0)
+
+        # 之后每天再发 1600, 并扣掉那些天已经记下的消耗
+        for day in range(from_day + 1, TOTAL_DAYS + 1):
+            food += 1600 - used_by_day.get(day, 0)
+        return food
+
     def _update_team_button_labels(self):
-        """Update team button labels to show remaining steps for each team."""
+        """Update team button labels to show remaining steps for each team.
+
+        圈地模式下改成显示"从当前天到赛季末的总剩余步数"(见
+        _get_team_total_remaining_steps), 退出圈地后恢复显示当日剩余步数。
+        """
         # Keep team button text styling consistent after text refresh.
         self._btn_team1.label.set_color('#FFFF00')
         self._btn_team2_switch.label.set_color('#FFFF00')
         self._btn_team3_switch.label.set_color('#FFFF00')
 
+        if self._enclosure_mode:
+            def steps_of(team):
+                return self._get_team_total_remaining_steps(team, self.current_day)
+        else:
+            def steps_of(team):
+                return self._get_team_steps_for_day(team, self.current_day)
+
         # Team 1 - always exists
-        team1_steps = self._get_team_steps_for_day(self.team1, self.current_day)
-        self._btn_team1.label.set_text(f'{team1_steps}')
-        
+        self._btn_team1.label.set_text(f'{steps_of(self.team1)}')
+
         # Team 2 - only if it exists
         if self.team2 is not None:
-            team2_steps = self._get_team_steps_for_day(self.team2, self.current_day)
-            self._btn_team2_switch.label.set_text(f'{team2_steps}')
+            self._btn_team2_switch.label.set_text(f'{steps_of(self.team2)}')
         else:
             self._btn_team2_switch.label.set_text('—')
-        
+
         # Team 3 - only if it exists
         if self.team3 is not None:
-            team3_steps = self._get_team_steps_for_day(self.team3, self.current_day)
-            self._btn_team3_switch.label.set_text(f'{team3_steps}')
+            self._btn_team3_switch.label.set_text(f'{steps_of(self.team3)}')
         else:
             self._btn_team3_switch.label.set_text('—')
 
@@ -2685,10 +2794,17 @@ class HexCore:
         else:
             food_left = self.total_food
             cumulated_reward = self.total_reward
-        
+
+        # 圈地模式下显示"从当前天到赛季末的总余粮", 和队伍按钮上的总剩余步数一个口径
+        # (见 _get_total_remaining_food); 退出圈地后自动恢复显示当日余粮。
+        food_label = '余粮'
+        if self._enclosure_mode:
+            food_left = self._get_total_remaining_food(self.current_day)
+            food_label = '总余粮'
+
         # Create table data
         table_data = [
-            ['余粮', f'{food_left}'],
+            [food_label, f'{food_left}'],
             ['总分', f'{cumulated_reward}']
         ]
         
@@ -3226,6 +3342,74 @@ class HexCore:
 
     
     
+    def _route_signature(self):
+        """路线当前状态的指纹, 只用来判断"读进来之后有没有被改过"。
+
+        不逐个动作去打标记(画一笔、撤销、圈地结算、日编辑……入口太多, 漏一个就会
+        出现"改了却不显示星号"), 而是直接比状态: 和存盘那一刻的指纹不同就是改过了。
+        附带的好处是改完又撤回到原样时星号会自己消失。
+
+        指纹里放的是段历史的全部要素(天、粮、分、步)加上各队终点, 这些一变路线就变了。
+        """
+        parts = []
+        for team in (getattr(self, 'team1', None), getattr(self, 'team2', None),
+                     getattr(self, 'team3', None)):
+            if team is None:
+                parts.append(None)
+                continue
+            parts.append((
+                tuple(team._seg_days), tuple(team._seg_foods),
+                tuple(team._seg_awards), tuple(team._seg_steps),
+                len(team.full_path),
+                tuple(team.full_path[-1]) if team.full_path else None,
+            ))
+        return hash(tuple(parts))
+
+    def _mark_save_file(self, file_path, clean=True):
+        """记下当前挂着的存档文件名; clean=False 表示文件内容和内存里的路线并不一致
+        (只保存到某一天的那种), 这时星号要继续留着。"""
+        import os
+        self._save_file_name = os.path.basename(file_path) if file_path else None
+        self._saved_route_signature = self._route_signature() if clean else None
+        self._update_window_title()
+
+    def _save_name_suffix(self):
+        """标题后面要挂的那截: " - 存档名"(改动过就再加个星号); 没读过存档时为空。"""
+        if not self._save_file_name:
+            return ''
+        suffix = ' - ' + self._save_file_name
+        if self._saved_route_signature != self._route_signature():
+            suffix += '*'
+        return suffix
+
+    def _update_window_title(self):
+        """刷新主窗口和全局统计窗口的标题(都挂上存档名 + 改动星号)。
+
+        全局统计看的就是当前内存里的路线, 和主窗口是同一份数据, 所以两个标题用的是
+        同一截后缀 —— 否则会出现"主窗口带星号、统计窗口不带"这种自相矛盾的显示。
+        """
+        suffix = self._save_name_suffix()
+        try:
+            self.fig.canvas.manager.set_window_title(self._window_base_title + suffix)
+        except Exception:
+            # 窗口已经关掉时 manager 会没有, 标题本来也就无所谓了。
+            pass
+        self._update_global_stat_title(suffix)
+
+    def _update_global_stat_title(self, suffix=None):
+        """全局统计窗口还开着的话, 把它的标题也刷一遍。"""
+        fig = getattr(self, 'global_stat_fig', None)
+        if fig is None:
+            return
+        if suffix is None:
+            suffix = self._save_name_suffix()
+        try:
+            if not plt.fignum_exists(fig.number):
+                return
+            fig.canvas.manager.set_window_title(GLOBAL_STAT_TITLE + suffix)
+        except Exception:
+            pass
+
     def _load_game(self):
         """Load game state from a JSON file."""
         try:
@@ -3358,6 +3542,7 @@ class HexCore:
                     f' WARNING: some segments could not be rebalanced within Day {TOTAL_DAYS} '
                     f'(the season length) and are piled up on the last day.'
                 )
+            self._mark_save_file(file_path)
             self._has_zoomed = False
             self._draw()
             print(f'Game loaded successfully from {file_path}')
@@ -3715,7 +3900,7 @@ class HexCore:
                 self.ax.text(
                     x,
                     y,
-                    '亡夜迫邪',
+                    'WYPX',
                     transform=self.ax.transAxes,
                     ha='center',
                     va='center',
@@ -4170,7 +4355,8 @@ class HexCore:
         self._draw_team_action_symbols()
         self._draw_map_stats_table()
         self._refresh_open_stat_windows()
-        
+        self._update_window_title()
+
         self.fig.canvas.draw_idle()
 
     # ── Data window ──────────────────────────────────────────────────
@@ -4799,7 +4985,8 @@ class HexCore:
     def _create_global_stat_figure(self):
         """Build the 全局统计 figure, its axes and its 复制 button."""
         self.global_stat_fig = plt.figure(figsize=GLOBAL_STAT_FIGSIZE)
-        self.global_stat_fig.canvas.manager.set_window_title('全局统计')
+        self.global_stat_fig.canvas.manager.set_window_title(
+            GLOBAL_STAT_TITLE + self._save_name_suffix())
         self.global_stat_ax = self.global_stat_fig.add_axes([0.05, 0.05, 0.9, 0.9])
         self.global_stat_fig.canvas.mpl_connect('close_event', self._on_global_stat_window_closed)
 
